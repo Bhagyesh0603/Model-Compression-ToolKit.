@@ -1,0 +1,72 @@
+host      : Apple M5 (arm64, Darwin)
+cores     : 10 logical / 4 performance
+ISA       : bf16, dotprod, fp16, i8mm, neon
+INT8      : fast — INT8 has fused kernels here (i8mm, dotprod) — expect a real latency win.
+default   : int8
+versions  : python 3.14.6, torch 2.14.0, onnxruntime 1.29.0, numpy 2.5.2
+
+training resnet56 for 60 epochs on mps
+
+epoch   1/60  loss 1.737  train 35.19%  val 43.51%  lr 0.0997  35.1s
+epoch   2/60  loss 1.096  train 60.89%  val 62.26%  lr 0.0999  34.1s
+epoch   3/60  loss 0.836  train 70.82%  val 68.44%  lr 0.0997  35.3s
+epoch   4/60  loss 0.720  train 75.00%  val 61.88%  lr 0.0994  34.7s
+epoch   5/60  loss 0.651  train 77.78%  val 72.29%  lr 0.0989  34.7s
+epoch   6/60  loss 0.608  train 79.14%  val 71.39%  lr 0.0982  35.9s
+epoch   7/60  loss 0.581  train 80.02%  val 77.37%  lr 0.0975  38.5s
+epoch   8/60  loss 0.556  train 80.78%  val 71.36%  lr 0.0966  39.8s
+epoch   9/60  loss 0.536  train 81.51%  val 77.58%  lr 0.0955  39.9s
+epoch  10/60  loss 0.520  train 82.10%  val 71.26%  lr 0.0944  41.9s
+epoch  11/60  loss 0.508  train 82.54%  val 79.27%  lr 0.0931  42.7s
+epoch  12/60  loss 0.497  train 83.02%  val 77.17%  lr 0.0917  42.9s
+epoch  13/60  loss 0.477  train 83.81%  val 77.84%  lr 0.0901  43.4s
+epoch  14/60  loss 0.469  train 83.90%  val 76.25%  lr 0.0885  43.1s
+epoch  15/60  loss 0.457  train 84.34%  val 79.40%  lr 0.0867  40.6s
+epoch  16/60  loss 0.448  train 84.60%  val 80.55%  lr 0.0849  42.9s
+epoch  17/60  loss 0.441  train 84.94%  val 79.55%  lr 0.0829  42.0s
+epoch  18/60  loss 0.430  train 85.34%  val 80.33%  lr 0.0809  42.2s
+epoch  19/60  loss 0.419  train 85.61%  val 81.73%  lr 0.0787  41.5s
+epoch  20/60  loss 0.415  train 85.65%  val 79.65%  lr 0.0765  42.1s
+epoch  21/60  loss 0.401  train 86.09%  val 77.99%  lr 0.0742  41.5s
+epoch  22/60  loss 0.393  train 86.61%  val 78.59%  lr 0.0719  42.2s
+epoch  23/60  loss 0.386  train 86.80%  val 79.73%  lr 0.0694  42.5s
+epoch  24/60  loss 0.375  train 87.23%  val 82.41%  lr 0.0670  46.4s
+epoch  25/60  loss 0.365  train 87.51%  val 85.12%  lr 0.0644  43.7s
+epoch  26/60  loss 0.353  train 87.78%  val 81.44%  lr 0.0619  45.8s
+epoch  27/60  loss 0.349  train 88.16%  val 85.72%  lr 0.0593  44.2s
+epoch  28/60  loss 0.338  train 88.43%  val 83.30%  lr 0.0566  43.8s
+epoch  29/60  loss 0.328  train 88.79%  val 78.69%  lr 0.0540  43.2s
+epoch  30/60  loss 0.323  train 88.99%  val 86.92%  lr 0.0513  46.4s
+epoch  31/60  loss 0.314  train 89.26%  val 84.56%  lr 0.0487  46.6s
+epoch  32/60  loss 0.299  train 89.77%  val 86.37%  lr 0.0460  45.1s
+epoch  33/60  loss 0.293  train 89.80%  val 83.89%  lr 0.0434  48.8s
+epoch  34/60  loss 0.283  train 90.29%  val 86.26%  lr 0.0407  44.8s
+epoch  35/60  loss 0.272  train 90.64%  val 85.13%  lr 0.0381  45.0s
+epoch  36/60  loss 0.260  train 91.13%  val 87.05%  lr 0.0356  46.9s
+epoch  37/60  loss 0.249  train 91.44%  val 87.91%  lr 0.0330  45.7s
+epoch  38/60  loss 0.239  train 91.91%  val 88.15%  lr 0.0306  44.2s
+epoch  39/60  loss 0.225  train 92.23%  val 87.25%  lr 0.0281  44.4s
+epoch  40/60  loss 0.214  train 92.55%  val 88.95%  lr 0.0258  46.5s
+epoch  41/60  loss 0.200  train 93.17%  val 89.30%  lr 0.0235  45.3s
+epoch  42/60  loss 0.186  train 93.55%  val 88.52%  lr 0.0213  44.9s
+epoch  43/60  loss 0.176  train 93.85%  val 89.03%  lr 0.0191  44.7s
+epoch  44/60  loss 0.164  train 94.36%  val 89.75%  lr 0.0171  43.5s
+epoch  45/60  loss 0.148  train 94.97%  val 90.21%  lr 0.0151  48.4s
+epoch  46/60  loss 0.135  train 95.39%  val 90.40%  lr 0.0133  45.7s
+epoch  47/60  loss 0.122  train 95.80%  val 90.83%  lr 0.0115  47.0s
+epoch  48/60  loss 0.107  train 96.39%  val 91.38%  lr 0.0099  44.6s
+epoch  49/60  loss 0.093  train 96.81%  val 91.80%  lr 0.0083  44.2s
+epoch  50/60  loss 0.083  train 97.20%  val 91.87%  lr 0.0069  44.4s
+epoch  51/60  loss 0.066  train 97.83%  val 92.29%  lr 0.0056  42.9s
+epoch  52/60  loss 0.058  train 98.03%  val 91.92%  lr 0.0045  45.8s
+epoch  53/60  loss 0.048  train 98.48%  val 92.53%  lr 0.0034  46.7s
+epoch  54/60  loss 0.040  train 98.73%  val 92.87%  lr 0.0025  44.5s
+epoch  55/60  loss 0.033  train 99.03%  val 92.96%  lr 0.0018  43.7s
+epoch  56/60  loss 0.029  train 99.09%  val 93.16%  lr 0.0011  45.2s
+epoch  57/60  loss 0.026  train 99.24%  val 93.13%  lr 0.0006  45.3s
+epoch  58/60  loss 0.023  train 99.35%  val 93.15%  lr 0.0003  45.2s
+epoch  59/60  loss 0.022  train 99.40%  val 93.14%  lr 0.0001  46.7s
+epoch  60/60  loss 0.022  train 99.38%  val 93.18%  lr 0.0000  44.2s
+
+final top-1 93.18%  (best epoch 93.18%)  in 45.8 min
+saved -> checkpoints/resnet56_fp32.pt

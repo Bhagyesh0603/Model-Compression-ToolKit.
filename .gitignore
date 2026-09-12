@@ -1,0 +1,16 @@
+__pycache__/
+*.py[cod]
+.venv/
+*.egg-info/
+build/
+dist/
+
+# CIFAR-10 download, trained checkpoints, and per-run ONNX artifacts
+data/
+checkpoints/
+artifacts/
+*.onnx
+*.pt
+
+.DS_Store
+.pytest_cache/

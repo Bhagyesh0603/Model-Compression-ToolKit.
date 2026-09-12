@@ -1,0 +1,1556 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CNN Compression Toolkit — Project Documentation</title>
+<style>
+:root{
+  --slate-50:#F8FAFC; --slate-100:#F1F5F9; --slate-200:#E2E8F0; --slate-300:#CBD5E1;
+  --slate-400:#94A3B8; --slate-500:#64748B; --slate-600:#475569; --slate-700:#334155;
+  --slate-900:#0F172A;
+  --violet:#6D28D9; --violet-bg:#EDE9FE;
+  --teal:#0F766E;  --teal-bg:#CCFBF1;
+  --green:#047857; --green-bg:#D1FAE5;
+  --sky:#1D4ED8;   --sky-bg:#DBEAFE;
+  --orange:#C2410C;--orange-bg:#FFEDD5;
+  --amber:#B45309; --amber-bg:#FEF3C7;
+  --rose:#B91C1C;  --rose-bg:#FEE2E2;
+  --sidebar-w:290px;
+  --font-ui:'Segoe UI',-apple-system,BlinkMacSystemFont,'Helvetica Neue',Arial,sans-serif;
+  --font-mono:'SF Mono',SFMono-Regular,ui-monospace,'JetBrains Mono',Menlo,Consolas,monospace;
+}
+*{box-sizing:border-box;}
+html{scroll-behavior:smooth;}
+body{
+  margin:0; font-family:var(--font-ui); color:var(--slate-700);
+  background:#fff; font-size:15.5px; line-height:1.72;
+  -webkit-font-smoothing:antialiased;
+}
+
+/* ---------- SIDEBAR ---------- */
+#sidebar{
+  position:fixed; top:0; left:0; width:var(--sidebar-w); height:100vh;
+  overflow-y:auto; background:var(--slate-50);
+  border-right:1px solid var(--slate-200); padding:26px 0 60px;
+}
+#sidebar .brand{padding:0 24px 18px; border-bottom:1px solid var(--slate-200); margin-bottom:14px;}
+#sidebar .brand h1{font-size:16px; margin:0 0 4px; color:var(--slate-900); letter-spacing:-.2px;}
+#sidebar .brand p{margin:0; font-size:11.5px; color:var(--slate-500); font-style:italic; line-height:1.45;}
+#sidebar .toc-label{
+  padding:0 24px; font-size:10.5px; font-weight:700; letter-spacing:1.3px;
+  color:var(--slate-400); margin:16px 0 8px;
+}
+#sidebar nav a{
+  display:block; padding:5px 24px 5px 24px; font-size:13px; color:var(--slate-600);
+  text-decoration:none; border-left:2.5px solid transparent; transition:.12s;
+}
+#sidebar nav a:hover{background:var(--slate-100); color:var(--slate-900);}
+#sidebar nav a.sub{padding-left:40px; font-size:12.2px; color:var(--slate-500);}
+#sidebar nav a.active{
+  border-left-color:var(--violet); color:var(--violet);
+  background:var(--violet-bg); font-weight:600;
+}
+#sidebar nav a .num{
+  display:inline-block; min-width:20px; color:var(--slate-400);
+  font-variant-numeric:tabular-nums; font-size:11.5px;
+}
+#sidebar nav a.active .num{color:var(--violet);}
+
+/* ---------- CONTENT ---------- */
+main{margin-left:var(--sidebar-w); padding:56px 60px 140px; max-width:1000px;}
+.doc-header{border-bottom:3px solid var(--slate-900); padding-bottom:26px; margin-bottom:14px;}
+.doc-header .kicker{
+  font-size:11px; font-weight:700; letter-spacing:1.6px; color:var(--violet);
+  text-transform:uppercase; margin-bottom:10px;
+}
+.doc-header h1{font-size:34px; line-height:1.22; margin:0 0 12px; color:var(--slate-900); letter-spacing:-.6px;}
+.doc-header .meta{font-size:13px; color:var(--slate-500);}
+.doc-header .meta strong{color:var(--slate-700);}
+
+h2{
+  font-size:25px; color:var(--slate-900); margin:56px 0 6px; letter-spacing:-.4px;
+  padding-bottom:9px; border-bottom:2px solid var(--slate-200); scroll-margin-top:24px;
+}
+h2 .num{color:var(--violet); font-variant-numeric:tabular-nums; margin-right:10px;}
+h3{font-size:17.5px; color:var(--slate-900); margin:32px 0 6px; scroll-margin-top:24px;}
+h3 .num{color:var(--slate-400); font-variant-numeric:tabular-nums; margin-right:8px; font-weight:600;}
+h4{font-size:14.5px; color:var(--slate-700); margin:22px 0 4px; text-transform:uppercase; letter-spacing:.7px;}
+p{margin:11px 0;}
+a{color:var(--violet);}
+strong{color:var(--slate-900); font-weight:650;}
+code{
+  font-family:var(--font-mono); font-size:12.8px; background:var(--slate-100);
+  padding:1.5px 5px; border-radius:4px; color:var(--rose); border:1px solid var(--slate-200);
+}
+ul,ol{margin:11px 0; padding-left:24px;}
+li{margin:5px 0;}
+li::marker{color:var(--slate-400);}
+
+/* ---------- TABLES ---------- */
+.tw{overflow-x:auto; margin:18px 0;}
+table{border-collapse:collapse; width:100%; font-size:13.2px;}
+caption{
+  caption-side:top; text-align:left; font-size:12.5px; color:var(--slate-500);
+  padding-bottom:8px; font-style:italic;
+}
+caption b{color:var(--slate-700); font-style:normal;}
+th{
+  background:var(--slate-100); color:var(--slate-900); font-weight:650; text-align:left;
+  padding:9px 12px; border-bottom:2px solid var(--slate-300); font-size:12.4px;
+  white-space:nowrap;
+}
+td{padding:9px 12px; border-bottom:1px solid var(--slate-200); vertical-align:top;}
+tbody tr:hover{background:var(--slate-50);}
+td.num,th.num{text-align:right; font-variant-numeric:tabular-nums; white-space:nowrap;}
+
+/* ---------- CALLOUTS ---------- */
+.callout{
+  border-left:4px solid; border-radius:0 9px 9px 0; padding:13px 18px;
+  margin:18px 0; font-size:14.2px;
+}
+.callout .lead{font-weight:700; display:block; margin-bottom:3px; font-size:12px;
+  letter-spacing:.9px; text-transform:uppercase;}
+.callout p:first-of-type{margin-top:0;} .callout p:last-child{margin-bottom:0;}
+.c-find{background:var(--violet-bg); border-color:var(--violet);} .c-find .lead{color:var(--violet);}
+.c-warn{background:var(--rose-bg); border-color:var(--rose);}     .c-warn .lead{color:var(--rose);}
+.c-note{background:var(--amber-bg); border-color:var(--amber);}   .c-note .lead{color:var(--amber);}
+.c-ok{background:var(--green-bg); border-color:var(--green);}     .c-ok .lead{color:var(--green);}
+
+/* ---------- EQUATIONS ---------- */
+.eq{
+  display:flex; align-items:center; gap:18px; margin:18px 0;
+  background:var(--slate-50); border:1px solid var(--slate-200);
+  border-radius:9px; padding:16px 20px;
+}
+.eq .body{flex:1; font-family:var(--font-mono); font-size:14.5px; color:var(--slate-900); line-height:2;}
+.eq .tag{color:var(--slate-400); font-size:13px; font-variant-numeric:tabular-nums; white-space:nowrap;}
+.eq-where{font-size:13px; color:var(--slate-500); margin:-8px 0 18px; padding-left:20px;}
+.eq-where b{color:var(--slate-700); font-family:var(--font-mono); font-size:12.5px; font-weight:500;}
+.frac{display:inline-flex; flex-direction:column; text-align:center; vertical-align:middle; margin:0 4px;}
+.frac .n{border-bottom:1.4px solid var(--slate-700); padding:0 7px 1px;}
+.frac .d{padding:1px 7px 0;}
+var{font-style:italic; font-family:'Times New Roman',Georgia,serif; font-size:16px;}
+
+/* ---------- FIGURE / MISC ---------- */
+figure{margin:26px 0; text-align:center;}
+figure img{max-width:100%; border:1px solid var(--slate-200); border-radius:10px;}
+figcaption{font-size:12.8px; color:var(--slate-500); margin-top:11px; font-style:italic;}
+figcaption b{color:var(--slate-700); font-style:normal;}
+.chip{
+  display:inline-block; padding:2px 9px; border-radius:11px; font-size:11px;
+  font-weight:700; letter-spacing:.4px; margin-right:5px; white-space:nowrap;
+}
+.ch-teal{background:var(--teal-bg); color:var(--teal);}
+.ch-green{background:var(--green-bg); color:var(--green);}
+.ch-sky{background:var(--sky-bg); color:var(--sky);}
+.ch-orange{background:var(--orange-bg); color:var(--orange);}
+.ch-violet{background:var(--violet-bg); color:var(--violet);}
+.ch-rose{background:var(--rose-bg); color:var(--rose);}
+.ch-slate{background:var(--slate-100); color:var(--slate-600);}
+pre{
+  background:var(--slate-900); color:#E2E8F0; padding:16px 20px; border-radius:9px;
+  overflow-x:auto; font-family:var(--font-mono); font-size:12.6px; line-height:1.7;
+}
+pre code{background:none; border:none; color:inherit; padding:0; font-size:inherit;}
+.stats{display:grid; grid-template-columns:repeat(4,1fr); gap:14px; margin:24px 0;}
+.stat{background:var(--slate-50); border:1px solid var(--slate-200); border-radius:10px; padding:15px 17px;}
+.stat .v{font-size:26px; font-weight:700; color:var(--violet); line-height:1.15; letter-spacing:-.5px;}
+.stat .l{font-size:11.6px; color:var(--slate-500); margin-top:3px; line-height:1.4;}
+.pipeline{display:flex; align-items:stretch; gap:0; margin:22px 0; flex-wrap:wrap;}
+.pstep{
+  flex:1; min-width:150px; border:2px solid; border-radius:10px; padding:13px 15px;
+  position:relative; margin-right:26px;
+}
+.pstep:last-child{margin-right:0;}
+.pstep:not(:last-child)::after{
+  content:"→"; position:absolute; right:-21px; top:50%; transform:translateY(-50%);
+  font-size:19px; color:var(--slate-400);
+}
+.pstep .t{font-weight:700; font-size:14.5px; margin-bottom:3px;}
+.pstep .d{font-size:11.8px; color:var(--slate-500); line-height:1.5;}
+hr{border:none; border-top:1px solid var(--slate-200); margin:44px 0;}
+.refs{font-size:13.4px; counter-reset:ref;}
+.refs li{margin:11px 0; padding-left:6px;}
+.refs .venue{color:var(--slate-500); font-style:italic;}
+.refs .flag{font-size:11.5px; color:var(--rose); font-weight:600;}
+
+@media print{
+  #sidebar{display:none;} main{margin-left:0; max-width:100%; padding:0;}
+  h2,h3,h4{page-break-after:avoid;} table,figure,.eq,.callout,.pipeline{page-break-inside:avoid;}
+  body{font-size:10.5pt;}
+}
+@media (max-width:1100px){
+  #sidebar{display:none;} main{margin-left:0; padding:32px 22px 90px;}
+  .stats{grid-template-columns:repeat(2,1fr);}
+}
+</style>
+</head>
+<body>
+
+<aside id="sidebar">
+  <div class="brand">
+    <h1>CNN Compression Toolkit</h1>
+    <p>A measurement-first approach to CPU model compression</p>
+  </div>
+  <div class="toc-label">CONTENTS</div>
+  <nav id="toc">
+    <a href="#abstract"><span class="num">—</span>Abstract</a>
+    <a href="#introduction"><span class="num">1</span>Introduction</a>
+    <a href="#problem" class="sub">1.1 Problem Statement</a>
+    <a href="#objectives" class="sub">1.2 Objectives</a>
+    <a href="#contributions" class="sub">1.3 Contributions</a>
+    <a href="#scope" class="sub">1.4 Scope</a>
+    <a href="#background"><span class="num">2</span>Background</a>
+    <a href="#bg-pruning" class="sub">2.1 Pruning</a>
+    <a href="#bg-quant" class="sub">2.2 Quantization</a>
+    <a href="#bg-kd" class="sub">2.3 Distillation</a>
+    <a href="#bg-latency" class="sub">2.4 FLOPs vs Latency</a>
+    <a href="#survey"><span class="num">3</span>Literature Survey</a>
+    <a href="#sv-method" class="sub">3.1 Review Method</a>
+    <a href="#sv-index" class="sub">3.2 Corpus Index</a>
+    <a href="#sv-ordering" class="sub">3.3 Ordering Evidence</a>
+    <a href="#sv-quant" class="sub">3.4 Quantization Cost</a>
+    <a href="#sv-latency" class="sub">3.5 Latency Evidence</a>
+    <a href="#sv-critical" class="sub">3.6 Critical Appraisal</a>
+    <a href="#sv-gap" class="sub">3.7 Research Gap</a>
+    <a href="#proposed"><span class="num">4</span>Proposed System</a>
+    <a href="#pr-thesis" class="sub">4.1 Design Thesis</a>
+    <a href="#pr-principles" class="sub">4.2 Principles</a>
+    <a href="#pr-pipeline" class="sub">4.3 Pipeline</a>
+    <a href="#pr-excluded" class="sub">4.4 Exclusions</a>
+    <a href="#architecture"><span class="num">5</span>Architecture</a>
+    <a href="#ar-overview" class="sub">5.1 Overview</a>
+    <a href="#ar-layers" class="sub">5.2 Layers</a>
+    <a href="#ar-components" class="sub">5.3 Components</a>
+    <a href="#ar-hygiene" class="sub">5.4 Data Hygiene</a>
+    <a href="#ar-modules" class="sub">5.5 Module Structure</a>
+    <a href="#math"><span class="num">6</span>Mathematical Formulation</a>
+    <a href="#m-notation" class="sub">6.1 Notation</a>
+    <a href="#m-prune" class="sub">6.2 Pruning</a>
+    <a href="#m-bn" class="sub">6.3 BN Re-estimation</a>
+    <a href="#m-kd" class="sub">6.4 Distillation</a>
+    <a href="#m-quant" class="sub">6.5 Quantization</a>
+    <a href="#m-sens" class="sub">6.6 Sensitivity</a>
+    <a href="#m-metrics" class="sub">6.7 Metrics &amp; Search</a>
+    <a href="#methodology"><span class="num">7</span>Methodology</a>
+    <a href="#me-data" class="sub">7.1 Data &amp; Models</a>
+    <a href="#me-measure" class="sub">7.2 Measurement Protocol</a>
+    <a href="#me-design" class="sub">7.3 Experimental Design</a>
+    <a href="#me-repro" class="sub">7.4 Reproducibility</a>
+    <a href="#implementation"><span class="num">8</span>Implementation</a>
+    <a href="#results"><span class="num">9</span>Results &amp; Analysis Plan</a>
+    <a href="#res-har" class="sub">9.1 HAR ResNet-18 (completed)</a>
+    <a href="#res-sweep" class="sub">9.2 CIFAR-10 Sweep (planned)</a>
+    <a href="#validity"><span class="num">10</span>Threats to Validity</a>
+    <a href="#future"><span class="num">11</span>Future Work</a>
+    <a href="#references"><span class="num">12</span>References</a>
+  </nav>
+</aside>
+
+<main>
+
+<header class="doc-header">
+  <div class="kicker">Major Project · Technical Documentation</div>
+  <h1>CNN Compression Toolkit: A Measurement-First Approach to CPU Model Compression</h1>
+  <div class="meta">
+    Structured pruning · Knowledge distillation · INT8/FP16 quantization &nbsp;·&nbsp;
+    Target platform: <strong>Apple M5 (arm64, 10-core, FEAT_I8MM)</strong> &nbsp;·&nbsp;
+    Evidence base: <strong>13 papers</strong>
+  </div>
+</header>
+
+<div class="stats">
+  <div class="stat"><div class="v">13</div><div class="l">papers reviewed in the evidence base</div></div>
+  <div class="stat"><div class="v">4</div><div class="l">pipeline stages, each independently measured</div></div>
+  <div class="stat"><div class="v">18</div><div class="l">experimental cells per architecture</div></div>
+  <div class="stat"><div class="v">0</div><div class="l">FLOPs-estimated performance claims</div></div>
+</div>
+
+<!-- ══════════════ ABSTRACT ══════════════ -->
+<h2 id="abstract">Abstract</h2>
+<p>
+Neural network compression is routinely evaluated using proxy metrics — floating-point operation
+counts (FLOPs), parameter counts, and model file size. This project argues, and demonstrates, that
+these proxies are unreliable predictors of the quantity practitioners actually care about on CPU
+deployment targets: <strong>wall-clock inference latency</strong>.
+</p>
+<p>
+We present a compression toolkit for convolutional neural networks that applies structured channel
+pruning, batch-normalisation re-estimation, knowledge distillation, and INT8/FP16 quantization in a
+principled order, and that judges the contribution of <em>every</em> stage by measured wall-clock
+latency on the actual host machine rather than by estimation. A survey of thirteen papers spanning
+pruning, quantization, and distillation establishes both the design rationale and the research gap:
+nine of the thirteen report only FLOPs, parameters, or model size, and none report CPU latency
+against a named instruction-set architecture. The toolkit's central experimental result quantifies
+the divergence between parameter reduction and realised speedup — a gap that the surveyed
+literature repeatedly implies but never systematically measures.
+</p>
+
+<!-- ══════════════ 1. INTRODUCTION ══════════════ -->
+<h2 id="introduction"><span class="num">1</span>Introduction</h2>
+
+<h3 id="problem"><span class="num">1.1</span>Problem Statement</h3>
+<p>
+Modern convolutional networks are over-parameterised relative to the hardware available for
+inference on commodity machines. Three families of technique address this — pruning (removing
+structure), quantization (reducing numerical precision), and knowledge distillation (transferring
+behaviour to a smaller model). Each is individually mature; existing libraries implement them well.
+</p>
+<p>
+The problem this project addresses is not the absence of algorithms, but the absence of
+<strong>honest, hardware-grounded accounting</strong> of what those algorithms deliver. A compression
+pipeline that reports "50% FLOPs reduction" makes an implicit promise of a 2× speedup that the
+target CPU frequently does not honour. Three mechanisms cause this divergence:
+</p>
+<ol>
+  <li><strong>Memory-bound layers do not accelerate.</strong> Depthwise-separable convolutions have a
+      low compute-to-communication ratio; removing channels reduces FLOPs but not wall-clock time.</li>
+  <li><strong>SIMD width quantises the benefit.</strong> Channel counts that are not multiples of the
+      vector register width receive little of the expected speedup, producing a "staircase" rather
+      than a linear response.</li>
+  <li><strong>Low-precision speedup is kernel-dependent.</strong> INT8 arithmetic accelerates only where
+      the runtime provides an optimised kernel for the target instruction set. Where it does not,
+      INT8 can be slower than FP32.</li>
+</ol>
+
+<h3 id="objectives"><span class="num">1.2</span>Objectives</h3>
+<ol>
+  <li>Implement a working compression pipeline — prune → recover → distill → quantize — producing a
+      deployable ONNX artifact from a trained PyTorch CNN.</li>
+  <li>Measure latency, top-1 accuracy, and disk size after <em>every</em> stage under identical,
+      recorded conditions.</li>
+  <li>Provide per-layer sensitivity diagnosis identifying which layers are responsible for accuracy loss.</li>
+  <li>Implement budget-driven compression that stops as soon as a user-stated target is met, rather
+      than compressing maximally.</li>
+  <li>Quantify the divergence between parameter reduction and measured speedup across a systematic
+      sweep of compression ratios and numeric precisions.</li>
+</ol>
+
+<h3 id="contributions"><span class="num">1.3</span>Contributions</h3>
+<div class="callout c-find">
+  <span class="lead">Primary contribution</span>
+  <p>Every performance claim produced by this toolkit is a measured wall-clock quantity obtained on
+  the host under recorded conditions. No FLOPs-derived or parameter-derived speedup is reported
+  anywhere in the system, including in its own ranking metric — which required modifying the
+  Efficiency Score adopted from the literature, since the published form is FLOPs-based
+  (§<a href="#m-metrics">6.7</a>).</p>
+</div>
+<ul>
+  <li><strong>A per-stage attribution method.</strong> Measuring after pruning but <em>before</em>
+      fine-tuning isolates how much accuracy batch-norm re-estimation alone recovers — a quantity
+      absent from the surveyed corpus.</li>
+  <li><strong>A translation-efficiency metric</strong> <var>η</var> (§<a href="#m-metrics">6.7</a>)
+      that expresses realised speedup as a fraction of the speedup implied by parameter reduction,
+      making the FLOPs-to-latency gap a directly reportable number.</li>
+  <li><strong>A critical appraisal of the evidence base</strong> (§<a href="#sv-critical">3.6</a>)
+      identifying four papers whose headline claims do not survive inspection.</li>
+</ul>
+
+<h3 id="scope"><span class="num">1.4</span>Scope</h3>
+<div class="tw">
+<table>
+  <caption><b>Table 1.</b> Project scope boundaries.</caption>
+  <thead><tr><th>In scope</th><th>Out of scope — and why</th></tr></thead>
+  <tbody>
+    <tr><td>Structured (channel) pruning</td><td>Unstructured pruning — yields no CPU speedup without sparse kernels</td></tr>
+    <tr><td>Knowledge distillation for accuracy recovery</td><td>Feature/relation-based KD — added complexity, no measurement payoff</td></tr>
+    <tr><td>INT8 / FP16 post-training quantization</td><td>Sub-8-bit — no native CPU kernel path exists</td></tr>
+    <tr><td>Per-layer sensitivity analysis</td><td>NAS — the project compresses given models, it does not design new ones</td></tr>
+    <tr><td>Convolutional networks (CIFAR-scale)</td><td>Transformers / LLMs — different bottlenecks, crowded field</td></tr>
+    <tr><td>Local execution on a single machine</td><td>Deployment, serving, cloud, CI, multi-machine benchmarking</td></tr>
+    <tr><td>Measured latency, accuracy, size</td><td>Low-rank decomposition, weight clustering, reparameterisation</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ══════════════ 2. BACKGROUND ══════════════ -->
+<h2 id="background"><span class="num">2</span>Background</h2>
+
+<h3 id="bg-pruning"><span class="num">2.1</span>Pruning</h3>
+<p>Pruning removes parameters judged unimportant. The critical distinction is
+<em>granularity</em>, because it determines whether the reduction is realisable on hardware.</p>
+<div class="tw">
+<table>
+  <caption><b>Table 2.</b> Pruning granularities and their CPU realisability.</caption>
+  <thead><tr><th>Granularity</th><th>What is removed</th><th>Tensor shrinks?</th><th>CPU speedup</th></tr></thead>
+  <tbody>
+    <tr><td><span class="chip ch-rose">Unstructured</span></td><td>Individual weights</td><td>No — zeros in place</td><td><strong>None</strong> without sparse kernels</td></tr>
+    <tr><td><span class="chip ch-slate">Semi-structured (N:M)</span></td><td>N of every M weights</td><td>No</td><td>Requires specific hardware support</td></tr>
+    <tr><td><span class="chip ch-teal">Structured</span></td><td>Entire channels / filters</td><td><strong>Yes</strong> — genuinely smaller</td><td><strong>Real</strong>, but sub-linear</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+Only structured pruning produces a physically smaller tensor and therefore a real latency reduction
+on a CPU without specialised kernel support. The corpus is explicit on the mechanism: unstructured
+sparsity "has no continuity in the distribution, which lead to frequent handover between CPU cache
+and memory, which restricted the actual acceleration effect" [<a href="#references">6</a>].
+</p>
+<p>
+Structured pruning is complicated by <strong>dependency coupling</strong>: in a residual architecture,
+removing an output channel from a convolution inside a block forces the same removal in every tensor
+that is summed with it. Handling this correctly requires tracing the computation graph, which is
+what Torch-Pruning's DepGraph algorithm provides and why this project wraps it rather than
+implementing channel surgery manually.
+</p>
+
+<h3 id="bg-quant"><span class="num">2.2</span>Quantization</h3>
+<p>
+Quantization maps floating-point values onto a lower-precision integer grid, reducing both memory
+traffic and — where a matching kernel exists — arithmetic cost. Two axes matter:
+</p>
+<ul>
+  <li><strong>When:</strong> <em>Post-training quantization (PTQ)</em> calibrates on a small unlabelled
+      sample and requires no gradient computation. <em>Quantization-aware training (QAT)</em> simulates
+      quantization during training so the network adapts to the induced noise, at substantially higher cost.</li>
+  <li><strong>Granularity:</strong> <em>per-tensor</em> uses one scale for an entire weight tensor;
+      <em>per-channel</em> uses one scale per output channel and is markedly more robust for
+      convolutions, at negligible cost.</li>
+</ul>
+<div class="callout c-note">
+  <span class="lead">Kernel dependency</span>
+  <p>INT8 memory savings are unconditional; INT8 <em>latency</em> savings are not. Speedup requires the
+  runtime to dispatch an optimised low-precision kernel for the host instruction set. As one surveyed
+  paper states plainly, "any wall-clock latency improvements depend critically on the availability and
+  quality of low-precision kernels on the target hardware" [<a href="#references">11</a>].</p>
+</div>
+
+<h3 id="bg-kd"><span class="num">2.3</span>Knowledge Distillation</h3>
+<p>
+Distillation trains a compact <em>student</em> to match the output distribution of a larger
+<em>teacher</em>. The teacher's soft probability distribution carries information about inter-class
+similarity that hard labels discard — "dark knowledge". Approaches divide into logit-based
+(matching output distributions), feature-based (matching intermediate activations), and relation-based
+(matching relationships between samples).
+</p>
+<p>
+This project uses <strong>logit-based distillation with the original uncompressed model as the
+teacher</strong>. This design, termed Compression-Aware KD in the corpus [<a href="#references">1</a>],
+eliminates the need to train or store a separate teacher network — the pre-compression checkpoint
+already exists and is, by construction, the best available teacher for its own compressed derivative.
+Logit-only distillation is also the cheaper choice: it requires no feature hooks and no architectural
+correspondence between teacher and student.
+</p>
+
+<h3 id="bg-latency"><span class="num">2.4</span>Why FLOPs Do Not Predict Latency</h3>
+<p>
+The assumption that FLOPs proxy for latency requires that arithmetic throughput be the binding
+constraint. On CPU inference at batch size 1, it frequently is not — memory bandwidth, cache
+behaviour, kernel dispatch, and vector width all intervene. The corpus supplies direct counter-evidence:
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 3.</b> Measured divergence between proxy metrics and wall-clock latency.</caption>
+  <thead><tr><th>Source</th><th>Hardware</th><th>Proxy reduction</th><th class="num">Measured gain</th><th class="num">η</th></tr></thead>
+  <tbody>
+    <tr><td>Chen et al. [<a href="#references">6</a>]</td><td>Raspberry Pi 3 (ARM A53)</td><td>30% of parameters</td><td class="num">14.6% latency</td><td class="num">0.49</td></tr>
+    <tr><td>AMC [<a href="#references">4</a>]</td><td>Pixel-1 (Snapdragon 821)</td><td>2× FLOPs (50%)</td><td class="num">1.81× (44.6%)</td><td class="num">0.89</td></tr>
+    <tr><td>AMC, latency-targeted [<a href="#references">4</a>]</td><td>Pixel-1</td><td>2.09× FLOPs</td><td class="num">1.95× (48.7%)</td><td class="num">0.93</td></tr>
+    <tr><td>Rafee et al. [<a href="#references">8</a>]</td><td>ESP32-S3 (Xtensa)</td><td>2.80× FLOPs</td><td class="num">2.87×</td><td class="num">1.01</td></tr>
+    <tr><td>Qiu et al. [<a href="#references">12</a>]</td><td>Tesla V100</td><td>2.6× <em>more</em> FLOPs</td><td class="num"><em>faster</em> wall-clock</td><td class="num">—</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+Translation efficiency <var>η</var> (defined in §<a href="#m-metrics">6.7</a>) ranges from
+<strong>0.49 to 1.01</strong> across these measurements, each computed directly from the row's own
+published numbers rather than taken from the source paper (which reports none of them). Critically,
+AMC's two rows isolate the effect of the search objective alone, holding model and hardware fixed:
+targeting FLOPs yields <var>η</var> = 0.89, while targeting measured latency directly — at a very
+similar proxy reduction (52.2% vs 49.9%) — raises it to <var>η</var> = 0.93. Optimising against the
+quantity you actually want therefore converts proxy reduction into latency more efficiently, even
+though neither search fully converts it: both remain below the <var>η</var> = 1 line. This partial,
+rather than complete, improvement is the empirical basis for the project's design stance — measuring
+directly helps, but is not a substitute for measuring the compressed model itself rather than a proxy.
+</p>
+
+<!-- ══════════════ 3. LITERATURE SURVEY ══════════════ -->
+<h2 id="survey"><span class="num">3</span>Literature Survey</h2>
+
+<h3 id="sv-method"><span class="num">3.1</span>Review Method</h3>
+<p>
+Thirteen documents were assembled covering pruning, quantization, and distillation for
+resource-constrained inference. Each was assessed on four axes: (i) technique category, (ii) whether
+results are measured on hardware or estimated from proxies, (iii) the specific hardware and runtime
+named, and (iv) internal consistency of the reported claims. A systematic keyword search across the
+full corpus for instruction-set and runtime identifiers —
+<code>AVX</code>, <code>AVX2</code>, <code>AVX-512</code>, <code>VNNI</code>, <code>NEON</code>,
+<code>oneDNN</code>, <code>XNNPACK</code>, <code>OpenVINO</code>, <code>FBGEMM</code> — returned
+<strong>zero matches</strong>.
+</p>
+
+<h3 id="sv-index"><span class="num">3.2</span>Corpus Index</h3>
+<div class="tw">
+<table>
+  <caption><b>Table 4.</b> Complete corpus with evidence classification. "Measured HW" indicates
+  wall-clock latency on named physical hardware; "proxy" indicates FLOPs/parameters/size only.</caption>
+  <thead><tr><th>#</th><th>Work</th><th>Category</th><th>Evidence</th><th>Hardware</th></tr></thead>
+  <tbody>
+    <tr><td>1</td><td>Chae &amp; Seo — Pipeline of Pruning, KD, Quantization</td><td><span class="chip ch-teal">Prune</span><span class="chip ch-sky">KD</span><span class="chip ch-orange">Quant</span></td><td>Proxy</td><td>RTX 3090 (training only)</td></tr>
+    <tr><td>2</td><td>Wang et al. — Iterative KD and Pruning (ITMC)</td><td><span class="chip ch-teal">Prune</span><span class="chip ch-sky">KD</span></td><td>Proxy</td><td>RTX 4090</td></tr>
+    <tr><td>3</td><td>Abdel-Salam et al. — VLCQ</td><td><span class="chip ch-orange">Quant</span></td><td>Proxy</td><td>Tesla P100</td></tr>
+    <tr><td>4</td><td>He et al. — AMC (ECCV 2018)</td><td><span class="chip ch-teal">Prune</span></td><td><strong>Measured HW</strong></td><td>Pixel-1, Snapdragon 821</td></tr>
+    <tr><td>5</td><td>Chen et al. — Quantization for Accurate Edge</td><td><span class="chip ch-orange">Quant</span></td><td>Proxy</td><td>Not named</td></tr>
+    <tr><td>6</td><td>Chen et al. — DNN compression via knowledge transfer</td><td><span class="chip ch-teal">Prune</span><span class="chip ch-sky">KD</span></td><td><strong>Measured HW</strong></td><td>Raspberry Pi 3, Titan X</td></tr>
+    <tr><td>7</td><td>Khan &amp; Rafat — CQKD</td><td><span class="chip ch-teal">Prune</span><span class="chip ch-orange">Quant</span><span class="chip ch-sky">KD</span></td><td><span class="flag">Unreliable</span></td><td>Not named</td></tr>
+    <tr><td>8</td><td>Rafee et al. — Composite HAR</td><td><span class="chip ch-sky">KD</span><span class="chip ch-orange">Quant</span></td><td><strong>Measured HW</strong></td><td>ESP32-S3 (240 MHz MCU)</td></tr>
+    <tr><td>9</td><td>Xu et al. — Head/Tail Categories (ReKD)</td><td><span class="chip ch-sky">KD</span></td><td>Accuracy only</td><td>Not applicable</td></tr>
+    <tr><td>10</td><td>Fang et al. — Federated Learning with QAT</td><td><span class="chip ch-orange">Quant</span></td><td>Single sentence</td><td>Intel i7-12700K</td></tr>
+    <tr><td>11</td><td>Zhou et al. — AEMC (LLM depth pruning)</td><td><span class="chip ch-teal">Prune</span></td><td>Memory only</td><td>GPU memory only</td></tr>
+    <tr><td>12</td><td>Qiu et al. — Dynamic Conv + Vision Mamba</td><td><span class="chip ch-slate">Off-topic</span></td><td>Measured (codec)</td><td>Tesla V100</td></tr>
+    <tr><td>13</td><td>Model Compression Studio (product spec)</td><td><span class="chip ch-slate">Design doc</span></td><td>None</td><td>Not applicable</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-find">
+  <span class="lead">Corpus-level finding</span>
+  <p>Only <strong>4 of 13</strong> works report wall-clock latency on named hardware, and all four use
+  ARM mobile, ARM embedded, or microcontroller targets. <strong>Zero</strong> report x86 CPU latency
+  against a named instruction set. Nine report FLOPs, parameters, or file size exclusively. Nothing in
+  the corpus addresses operator fusion, memory layout, thread count, or batch-1 single-thread
+  inference — the regime in which a commodity CPU actually operates.</p>
+</div>
+
+<h3 id="sv-ordering"><span class="num">3.3</span>Evidence on Stage Ordering</h3>
+<p>The corpus contains three mutually incompatible positions on how to sequence the techniques.</p>
+
+<h4>Position A — fixed sequential order, quantization last</h4>
+<p>
+Chae &amp; Seo [<a href="#references">1</a>] propose prune → KD-assisted fine-tune → QAT → INT8, and
+justify quantization-last through a feasibility analysis: converting weights to integer
+representation changes the dtype, which breaks structural pruning and complicates gradient-based
+fine-tuning. Their feasibility matrix marks <em>Quantization→Pruning</em> and <em>Quantization→KD</em>
+as infeasible on grounds of "data incompatibility".
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 5.</b> Chae &amp; Seo feasibility matrix (○ feasible, △ feasible with external
+  teacher, ✗ infeasible), with measured results on ResNet-56/CIFAR-100 (baseline 71.84%).</caption>
+  <thead><tr><th>Combination</th><th>Feasibility</th><th>Constraint</th></tr></thead>
+  <tbody>
+    <tr><td>Pruning → Quantization</td><td>○</td><td>—</td></tr>
+    <tr><td>Pruning → KD</td><td>△</td><td>External teacher required</td></tr>
+    <tr><td><strong>Quantization → Pruning</strong></td><td><strong>✗</strong></td><td>Dtype incompatibility</td></tr>
+    <tr><td><strong>Quantization → KD</strong></td><td><strong>✗</strong></td><td>Dtype incompatibility</td></tr>
+    <tr><td>KD → Pruning</td><td>△</td><td>External teacher required</td></tr>
+    <tr><td>KD → Quantization</td><td>△</td><td>External teacher required</td></tr>
+  </tbody>
+</table>
+</div>
+<p>Their reported single-technique results are directly useful as reference magnitudes:</p>
+<div class="tw">
+<table>
+  <caption><b>Table 6.</b> Single-technique results, ResNet-56/CIFAR-100 [<a href="#references">1</a>].</caption>
+  <thead><tr><th>Configuration</th><th class="num">Top-1</th><th class="num">Δ</th><th class="num">Size</th></tr></thead>
+  <tbody>
+    <tr><td>Baseline FP32</td><td class="num">71.84%</td><td class="num">—</td><td class="num">3.44 MB</td></tr>
+    <tr><td>FP16 only</td><td class="num">71.85%</td><td class="num">+0.01 pp</td><td class="num">1.78 MB</td></tr>
+    <tr><td>INT8 (after QAT)</td><td class="num">71.09%</td><td class="num">−0.75 pp</td><td class="num">1.06 MB</td></tr>
+    <tr><td>Pruning 0.3</td><td class="num">69.18%</td><td class="num">−2.66 pp</td><td class="num">1.70 MB</td></tr>
+    <tr><td>Pruning 0.4</td><td class="num">65.58%</td><td class="num">−6.26 pp</td><td class="num">1.30 MB</td></tr>
+    <tr><td>Pruning 0.5</td><td class="num">63.70%</td><td class="num">−8.14 pp</td><td class="num">0.97 MB</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h4>Position B — reject sequencing entirely</h4>
+<p>
+Wang et al. [<a href="#references">2</a>] measured <em>both</em> sequential orderings and found both
+inferior to either technique used alone:
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 7.</b> ITMC ordering ablation, Office-31, ResNet-50 student, mean over 6 transfer tasks.</caption>
+  <thead><tr><th>Method</th><th class="num">Mean accuracy</th><th>Interpretation</th></tr></thead>
+  <tbody>
+    <tr><td>Pruning only (TCP)</td><td class="num">77.2</td><td>Single technique</td></tr>
+    <tr><td>KD only (PKD)</td><td class="num">77.1</td><td>Single technique</td></tr>
+    <tr><td>KD → Prune</td><td class="num">76.6</td><td><strong>Worse than either alone</strong></td></tr>
+    <tr><td>Prune → KD</td><td class="num">75.5</td><td><strong>Worse than either alone</strong></td></tr>
+    <tr><td>Interleaved per-epoch (ITMC)</td><td class="num"><strong>81.6</strong></td><td>+4.4 over best single</td></tr>
+  </tbody>
+</table>
+</div>
+<p>
+Their conclusion is that "KD and pruning should be seamlessly orchestrated during the training instead
+of treating them as two independent phases." This is the strongest ordering evidence in the corpus and
+it argues against the sequential design. Two caveats bound its applicability: the result is obtained in
+an unsupervised domain-adaptation regime with distribution shift, and interleaving requires a training
+loop at every pruning step — computationally prohibitive as a default on a CPU-only budget.
+</p>
+
+<h4>Position C — lightweight architecture first, no quantization</h4>
+<p>
+Chen et al. [<a href="#references">6</a>] order the pipeline as architecture-lightweighting → KD →
+iterative pruning, omitting quantization entirely, and are the only work in the corpus to report ARM
+CPU wall-clock for a CNN classifier.
+</p>
+<div class="callout c-ok">
+  <span class="lead">Design resolution</span>
+  <p>This project adopts <strong>prune → BN-recover → distill → quantize</strong>. Quantization-last
+  follows from Position A's dtype constraint, which is a hard engineering fact rather than a contested
+  empirical claim. Position B's interleaving finding is honoured within the pruning stage — pruning
+  proceeds in small iterative steps with recovery between them — but full per-epoch interleaving is
+  deferred as computationally infeasible for the default path.</p>
+</div>
+
+<h3 id="sv-quant"><span class="num">3.4</span>Evidence on Quantization Cost</h3>
+<p>Reported INT8 accuracy cost varies across the corpus by roughly a factor of eight:</p>
+<div class="tw">
+<table>
+  <caption><b>Table 8.</b> Quantization accuracy cost across the corpus.</caption>
+  <thead><tr><th>Model</th><th>Scheme</th><th class="num">Accuracy cost</th><th>Outcome</th></tr></thead>
+  <tbody>
+    <tr><td>Small VGG-16 (5 conv)</td><td>4/8-bit INQ</td><td class="num">−0.02 pp</td><td>Negligible</td></tr>
+    <tr><td>ResNet-56 / CIFAR-100</td><td>QAT → INT8</td><td class="num">−0.75 pp</td><td>Acceptable</td></tr>
+    <tr><td>MobileNetV2</td><td>PTQ ~4.4-bit weights</td><td class="num">−1.60 pp</td><td>Acceptable</td></tr>
+    <tr><td>Simplified segmentation net</td><td>4-bit INQ</td><td class="num">−4.40 pp</td><td>Marginal</td></tr>
+    <tr><td>51K-param 1D CNN</td><td>PTQ INT8</td><td class="num"><strong>−6.12 pp</strong></td><td><strong>Rejected — shipped FP32</strong></td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-find">
+  <span class="lead">Consistent pattern across two independent papers</span>
+  <p>Already-compact models tolerate quantization substantially worse than over-parameterised ones.
+  Chen et al. [<a href="#references">5</a>] state it directly: "if the original model is already
+  simplified, the inhibiting effect of quantization will be faded." Rafee et al.
+  [<a href="#references">8</a>] independently confirm it, measuring −6.12 pp on a 51K-parameter network
+  and rejecting INT8 deployment as a result.</p>
+  <p><strong>Design consequence.</strong> Pruning removes precisely the redundancy that absorbs
+  quantization noise. Therefore a quantization accuracy measurement taken on the <em>dense</em> model
+  is systematically optimistic about the same model after pruning, and must not be carried forward as
+  a budget. This motivates measuring quantization damage on the compressed model, not the original.</p>
+</div>
+
+<h3 id="sv-latency"><span class="num">3.5</span>Evidence on Compression-to-Latency Translation</h3>
+<p>
+AMC [<a href="#references">4</a>] is the corpus's methodological high point: it is the only work that
+closes the loop by searching directly against measured latency, and the only one that identifies
+<em>which layer types</em> resist acceleration.
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 9.</b> AMC MobileNet-V1 results, ImageNet, TF-Lite on Pixel-1.</caption>
+  <thead><tr><th>Configuration</th><th class="num">MMAC</th><th class="num">Top-1</th><th class="num">CPU total</th><th class="num">Speedup</th></tr></thead>
+  <tbody>
+    <tr><td>1.0 MobileNet-V1 baseline</td><td class="num">569</td><td class="num">70.9%</td><td class="num">123.3 ms</td><td class="num">1.00×</td></tr>
+    <tr><td>AMC, 0.5× FLOPs constraint</td><td class="num">285</td><td class="num">70.5%</td><td class="num">68.3 ms</td><td class="num">1.81×</td></tr>
+    <tr><td>AMC, 0.5× <strong>latency</strong> constraint</td><td class="num">272</td><td class="num">70.2%</td><td class="num"><strong>63.3 ms</strong></td><td class="num"><strong>1.95×</strong></td></tr>
+  </tbody>
+</table>
+</div>
+<p>AMC's per-layer observation is the direct justification for this project's per-layer allocation design:</p>
+<div class="callout c-note">
+  <span class="lead">Layer-type dependence</span>
+  <p>"We achieve <strong>2.01× speed up for 1×1 convolution but less significant speed up for
+  depth-wise convolution</strong> due to the small computation to communication ratio."
+  [<a href="#references">4</a>]</p>
+</div>
+<p>
+Rafee et al. [<a href="#references">8</a>] supply the complementary per-operator profile: on their
+network, three convolution layers accounted for 1,809,050 µs of a 1,836,271 µs total —
+<strong>98.5% of inference time</strong> — while all dense layers combined contributed 3.1 ms. Pruning
+fully-connected parameters, a common default because they are numerous, is therefore close to
+worthless for latency.
+</p>
+
+<h3 id="sv-critical"><span class="num">3.6</span>Critical Appraisal</h3>
+<p>Four works have headline claims that do not survive inspection and are therefore not used as design evidence.</p>
+
+<div class="callout c-warn">
+  <span class="lead">Khan &amp; Rafat, CQKD [<a href="#references">7</a>] — discarded</span>
+  <p><strong>(i)</strong> The abstract reports "97.9% on CIFAR-10 and 91.2% on CIFAR-100"; these are
+  <em>training</em> accuracies. Table 1 gives test accuracy as <strong>87.39%</strong> (CIFAR-10) and
+  <strong>53.61%</strong> (CIFAR-100) — a ~38 pp generalisation gap presented as a success.
+  <strong>(ii)</strong> The "34,000×" compression ratio is defined as <var>R</var> = <var>n</var>/<var>k</var>,
+  the ratio of weights to cluster centroids. This counts only the centroid table and omits the
+  per-weight cluster index (<var>n</var>·⌈log₂<var>k</var>⌉ bits), which dominates storage. The figure
+  is not physically realisable.</p>
+</div>
+
+<div class="callout c-warn">
+  <span class="lead">VLCQ [<a href="#references">3</a>] — reclassified as storage-only</span>
+  <p>Excellent accuracy-per-bit results, but the paper concedes that variable-length Golomb decoding is
+  inherently serial and that "software implementation … would incur a time penalty for decoding the
+  weights." It is a memory-footprint technique, not a latency technique, on any CPU target.</p>
+</div>
+
+<div class="callout c-warn">
+  <span class="lead">Chen et al., edge quantization — not a latency result</span>
+  <p>States that "as activations are in floating-point representation, the runtime is not affected" —
+  a memory-only result with zero speedup. Its headline accuracy improvements additionally require
+  ensembling 2–7 models, which multiplies inference cost.</p>
+</div>
+
+<div class="callout c-warn">
+  <span class="lead">Fang et al., FL-QAT [<a href="#references">10</a>] — single-source, unusable</span>
+  <p>The lone x86 latency figure in the corpus (i7-12700K, 1.499 ms → 605 ms at 4-bit) appears in one
+  sentence with no methodology, batch size, runtime, or variance. Furthermore, 4-bit weight+activation
+  GEMM has no native x86 instruction path, so the 4-bit-versus-8-bit latency distinction is likely an
+  artefact of unpacking or simulation.</p>
+</div>
+
+<p>
+A further consistency issue affects the primary ordering reference: Chae &amp; Seo's Table 2 lists
+Pruning(0.5) at 32.10 MFLOPs while Table 4 lists the same configuration at 64.20 MFLOPs, and the
+headline CAKD contribution is supported only by scatter plots with no numeric table. The paper is
+cited here for its dtype-ordering constraint, which is mechanically verifiable, and not for the
+magnitude of its CAKD result.
+</p>
+<p>
+Item 13 in the corpus, the "Model Compression Studio" specification [<a href="#references">13</a>], is
+not a research paper but an earlier design document for this same project, included in the corpus for
+completeness rather than as external evidence. It is superseded by the present design on two points:
+its central design constraint was a 4 GB GPU rather than a CPU-only host, and its proposed stage order
+was <strong>prune → quantize → KD</strong> — placing quantization <em>before</em> distillation, which
+Position A's feasibility analysis marks infeasible (Table 5) and which the interleaving evidence of
+Position B also argues against. It is retained in Table 4 as a record of the design's starting point,
+not as supporting evidence for the design ultimately adopted.
+</p>
+
+<h3 id="sv-gap"><span class="num">3.7</span>Identified Research Gap</h3>
+<div class="callout c-find">
+  <span class="lead">Gap statement</span>
+  <p>The corpus establishes that compression-to-latency translation is (a) sub-linear, (b) strongly
+  layer-type dependent, and (c) hardware-and-kernel dependent. Yet nine of thirteen works report only
+  proxy metrics, no work reports x86 CPU latency against a named instruction set, and no work measures
+  the contribution of individual pipeline stages under identical conditions. <strong>The gap is not a
+  missing algorithm — it is missing measurement.</strong></p>
+</div>
+
+<!-- ══════════════ 4. PROPOSED SYSTEM ══════════════ -->
+<h2 id="proposed"><span class="num">4</span>Proposed System</h2>
+
+<h3 id="pr-thesis"><span class="num">4.1</span>Design Thesis</h3>
+<blockquote style="border-left:4px solid var(--violet); background:var(--violet-bg); margin:20px 0; padding:16px 22px; border-radius:0 9px 9px 0; font-size:16px; color:var(--slate-900);">
+Every stage of compression is judged by measured wall-clock latency on the actual host machine,
+never by FLOPs or parameter count — and the resulting measurements show that proxy reduction does not
+translate proportionally into speedup.
+</blockquote>
+
+<h3 id="pr-principles"><span class="num">4.2</span>Design Principles</h3>
+<ol>
+  <li><strong>Measure, never estimate.</strong> No FLOPs- or parameter-derived speedup claim appears
+      anywhere, including in the ranking metric.</li>
+  <li><strong>Measurement is infrastructure, not a feature.</strong> A single harness with fixed,
+      recorded settings serves all stages, making cross-stage numbers comparable by construction.</li>
+  <li><strong>Free recovery before expensive recovery.</strong> Batch-norm re-estimation costs forward
+      passes only and is exhausted before any gradient-based fine-tuning is attempted.</li>
+  <li><strong>Wrap mature implementations.</strong> Dependency-graph pruning and quantization numerics
+      are solved problems; re-implementing them adds risk without contribution.</li>
+  <li><strong>Stop when the target is met.</strong> Budget-driven search compresses the minimum
+      necessary rather than the maximum possible.</li>
+  <li><strong>Test data is sacred.</strong> The test split participates in no fitting step of any kind.</li>
+</ol>
+
+<h3 id="pr-pipeline"><span class="num">4.3</span>Pipeline</h3>
+<div class="pipeline">
+  <div class="pstep" style="border-color:var(--teal); background:var(--teal-bg);">
+    <div class="t" style="color:var(--teal);">1 · Prune</div>
+    <div class="d">Structured channel removal via DepGraph. L1 magnitude importance, SIMD-aligned widths, applied iteratively.</div>
+  </div>
+  <div class="pstep" style="border-color:var(--green); background:var(--green-bg);">
+    <div class="t" style="color:var(--green);">2 · BN Recover</div>
+    <div class="d">Reset and recompute batch-norm statistics on calibration data. Forward passes only — no backprop.</div>
+  </div>
+  <div class="pstep" style="border-color:var(--sky); background:var(--sky-bg);">
+    <div class="t" style="color:var(--sky);">3 · Distill</div>
+    <div class="d">Logit KD with the original uncompressed model as frozen teacher. Only if accuracy remains short.</div>
+  </div>
+  <div class="pstep" style="border-color:var(--orange); background:var(--orange-bg);">
+    <div class="t" style="color:var(--orange);">4 · Quantize</div>
+    <div class="d">ONNX export then ORT static INT8 (QDQ, per-channel) or FP16. Always last.</div>
+  </div>
+</div>
+<p>
+Each stage is followed by a measurement, so its individual contribution is attributable. The ordering
+is forced by the dtype constraint established in §<a href="#sv-ordering">3.3</a>: quantization
+converts weights to an integer representation, after which structural pruning and gradient-based
+fine-tuning are no longer available.
+</p>
+<p>
+Measuring after stage 2 but before stage 3 isolates how much accuracy batch-norm re-estimation alone
+recovers. Because pruning invalidates the running mean and variance accumulated by every batch-norm
+layer, a substantial part of the apparent accuracy loss from pruning is a statistics artefact rather
+than genuine capacity loss — recoverable without any gradient computation.
+</p>
+
+<h3 id="pr-excluded"><span class="num">4.4</span>Deliberate Exclusions</h3>
+<div class="tw">
+<table>
+  <caption><b>Table 10.</b> Techniques excluded, with justification from the evidence base.</caption>
+  <thead><tr><th>Excluded</th><th>Justification</th></tr></thead>
+  <tbody>
+    <tr><td>Unstructured pruning as a latency feature</td><td>No CPU speedup without sparse kernels; causes cache/memory thrashing [<a href="#references">6</a>]</td></tr>
+    <tr><td>Weight clustering / K-means quantization</td><td>Optimises disk footprint via a codebook, not throughput; corpus instance additionally unreliable (§<a href="#sv-critical">3.6</a>)</td></tr>
+    <tr><td>Variable-length coded quantization</td><td>Serial decode penalty in software; storage technique, not latency technique</td></tr>
+    <tr><td>Sub-8-bit quantization</td><td>No native CPU kernel path; reported speedups are unpacking artefacts</td></tr>
+    <tr><td>Low-rank / tensor decomposition</td><td>Requires heavy retraining; composes poorly with small 3×3/1×1 kernels</td></tr>
+    <tr><td>Neural architecture search</td><td>Off-mission — the system compresses supplied models, it does not design new ones</td></tr>
+    <tr><td>Feature/relation-based KD</td><td>Higher training cost for no measurement benefit; logit KD is competitive [<a href="#references">9</a>]</td></tr>
+    <tr><td>Quantization-aware training (v1)</td><td>Iterative training on CPU is prohibitive; PTQ with per-channel scales is the affordable path</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ══════════════ 5. ARCHITECTURE ══════════════ -->
+<h2 id="architecture"><span class="num">5</span>System Architecture</h2>
+
+<h3 id="ar-overview"><span class="num">5.1</span>Overview</h3>
+<figure>
+  <img src="architecture.png" alt="System architecture diagram">
+  <figcaption><b>Figure 1.</b> System architecture. The measurement harness spans the full width beneath
+  the pipeline: it is the foundation layer that every stage reports into, not a stage within the chain.
+  Dashed arrows denote feedback and constraint paths; the test split (red) connects only to measurement.</figcaption>
+</figure>
+
+<h3 id="ar-layers"><span class="num">5.2</span>Layered Design</h3>
+<p>
+The architecture inverts the conventional arrangement in which each stage reports its own metrics.
+Here a single measurement layer underpins all stages. This is the structural expression of the design
+thesis: if stages measured themselves independently, differences in warmup, threading, or batch size
+would make cross-stage comparison meaningless, and comparability is precisely what the project claims.
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 11.</b> Architectural layers and responsibilities.</caption>
+  <thead><tr><th>Layer</th><th>Responsibility</th><th>Depends on</th></tr></thead>
+  <tbody>
+    <tr><td><strong>L0 · Inputs</strong></td><td>Trained FP32 checkpoint; CIFAR-10 splits with enforced role separation</td><td>—</td></tr>
+    <tr><td><strong>L1 · Measurement</strong></td><td>Latency, accuracy, size, host context under fixed recorded settings</td><td>ONNX Runtime</td></tr>
+    <tr><td><strong>L2 · Analysis</strong></td><td>Per-layer sensitivity; budget-driven search with early exit</td><td>L1</td></tr>
+    <tr><td><strong>L3 · Transform</strong></td><td>Prune, BN-recover, distill, quantize — each a pure model→model function</td><td>L1, L2</td></tr>
+    <tr><td><strong>L4 · Export</strong></td><td>ONNX serialisation, static shapes, opset ≥ 13</td><td>L3</td></tr>
+    <tr><td><strong>L5 · Report</strong></td><td>Before/after tables, Pareto front, sensitivity chart</td><td>L1</td></tr>
+    <tr><td><strong>L6 · Consume</strong></td><td>Load artifact in a fresh process and classify</td><td>L4</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="ar-components"><span class="num">5.3</span>Component Specifications</h3>
+<div class="tw">
+<table>
+  <caption><b>Table 12.</b> Component specifications.</caption>
+  <thead><tr><th>Component</th><th>Implementation</th><th>Key parameters</th></tr></thead>
+  <tbody>
+    <tr><td>Latency measurement</td><td>ORT <code>InferenceSession</code>, CPUExecutionProvider</td><td>50 warmup, 200 timed runs, 1 thread, batch 1</td></tr>
+    <tr><td>Accuracy measurement</td><td>Top-1 over the test split</td><td>10,000 held-out images</td></tr>
+    <tr><td>Size measurement</td><td>On-disk byte count of the ONNX file</td><td>Actual file, not estimated</td></tr>
+    <tr><td>Structured pruning</td><td>Torch-Pruning <code>DependencyGraph</code></td><td>L1 magnitude, alignment <var>A</var> ∈ {8,16,32}</td></tr>
+    <tr><td>BN re-estimation</td><td>Reset <code>running_mean</code>/<code>running_var</code>, forward in train mode</td><td>512 calibration images</td></tr>
+    <tr><td>Distillation</td><td>KL divergence on temperature-softened logits</td><td>α ≈ 0.3, T ≈ 4, MPS device</td></tr>
+    <tr><td>Quantization</td><td>ORT <code>quantize_static</code>, QDQ format</td><td>Per-channel weights, INT8 / FP16</td></tr>
+    <tr><td>Sensitivity</td><td>One-at-a-time layer perturbation</td><td>MSE and SQNR per layer</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="ar-hygiene"><span class="num">5.4</span>Data Hygiene Design</h3>
+<p>
+Three dataset roles are separated by construction rather than by convention, and the separation is
+represented explicitly in the architecture (Figure 1):
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 13.</b> Dataset role separation.</caption>
+  <thead><tr><th>Split</th><th class="num">Size</th><th>Permitted use</th><th>Prohibited use</th></tr></thead>
+  <tbody>
+    <tr><td>Train</td><td class="num">50,000</td><td>Baseline training, distillation fine-tuning</td><td>Any accuracy reporting</td></tr>
+    <tr><td>Calibration</td><td class="num">512</td><td>BN re-estimation, PTQ calibration</td><td>Any accuracy reporting</td></tr>
+    <tr><td><strong>Test</strong></td><td class="num">10,000</td><td><strong>Accuracy reporting only</strong></td><td><strong>Every fitting step</strong></td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-warn">
+  <span class="lead">Rationale</span>
+  <p>The calibration subset is drawn from the <em>train</em> split, never the test split, because
+  quantization calibration and batch-norm re-estimation both fit parameters to the data they observe.
+  Drawing calibration data from the test set would render the reported accuracy an optimistically
+  biased estimate. The corpus contains a direct cautionary instance: a paper whose headline figures
+  collapse from 97.9% to 87.4% once test rather than training accuracy is read
+  (§<a href="#sv-critical">3.6</a>).</p>
+</div>
+
+<h3 id="ar-modules"><span class="num">5.5</span>Module Structure</h3>
+<pre><code>compresskit/
+  models.py       CIFAR ResNet-20/56, VGG-16-BN definitions
+  data.py         CIFAR-10 loaders; train / calibration / test role separation
+  benchmark.py    latency (warmup, median, p95), accuracy, size, host context
+  prune.py        Torch-Pruning wrapper: L1 magnitude, SIMD alignment
+  recover.py      batch-norm re-estimation
+  distill.py      KD fine-tune, teacher = original model
+  quantize.py     ONNX export + ORT static INT8 / FP16
+  sensitivity.py  per-layer one-at-a-time MSE / SQNR analysis
+  search.py       budget-driven search with early exit
+  report.py       before/after tables, Pareto plot, sensitivity chart
+  cli.py          compress(model, budget) entry point
+
+experiments/
+  train_baseline.py   train ResNet-56 / VGG-16-BN on CIFAR-10 (MPS)
+  run_sweep.py        ratio x precision sweep
+
+demo.ipynb            one image, original vs compressed, side by side</code></pre>
+
+<!-- ══════════════ 6. MATHEMATICAL FORMULATION ══════════════ -->
+<h2 id="math"><span class="num">6</span>Mathematical Formulation</h2>
+
+<h3 id="m-notation"><span class="num">6.1</span>Notation</h3>
+<div class="tw">
+<table>
+  <caption><b>Table 14.</b> Notation used throughout.</caption>
+  <thead><tr><th>Symbol</th><th>Meaning</th></tr></thead>
+  <tbody>
+    <tr><td><var>f</var>, <var>f<sub>θ</sub></var></td><td>Network, parameterised by θ</td></tr>
+    <tr><td><var>W</var><sup>(<var>l</var>)</sup> ∈ ℝ<sup><var>C</var><sub>out</sub>×<var>C</var><sub>in</sub>×<var>k</var>×<var>k</var></sup></td><td>Weight tensor of convolutional layer <var>l</var></td></tr>
+    <tr><td><var>z<sub>T</sub></var>, <var>z<sub>S</sub></var></td><td>Teacher and student logits</td></tr>
+    <tr><td><var>r</var></td><td>Pruning ratio (fraction of channels removed)</td></tr>
+    <tr><td><var>A</var></td><td>SIMD alignment constant, <var>A</var> ∈ {8, 16, 32}</td></tr>
+    <tr><td><var>s</var>, <var>z</var></td><td>Quantization scale and zero-point</td></tr>
+    <tr><td><var>b</var></td><td>Bit-width</td></tr>
+    <tr><td><var>T</var></td><td>Measured latency (ms) — or KD temperature where stated</td></tr>
+    <tr><td><var>M</var></td><td>A source's own claimed proxy metric (parameter count or FLOPs — §<a href="#m-metrics">6.7</a>)</td></tr>
+    <tr><td>𝒟<sub>cal</sub>, 𝒟<sub>test</sub></td><td>Calibration and test sets</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="m-prune"><span class="num">6.2</span>Structured Pruning</h3>
+<p><strong>Channel importance.</strong> The L1 magnitude of each output channel's filter slice:</p>
+<div class="eq">
+  <div class="body">I<sub>c</sub><sup>(l)</sup> = ‖W<sub>c,:,:,:</sub><sup>(l)</sup>‖<sub>1</sub> = Σ<sub>i</sub> Σ<sub>j</sub> Σ<sub>k</sub> | W<sub>c,i,j,k</sub><sup>(l)</sup> |</div>
+  <div class="tag">(1)</div>
+</div>
+<p class="eq-where">where <b>c ∈ {1…C_out}</b> indexes output channels of layer <b>l</b>.</p>
+
+<p>Importance is normalised within each layer so that thresholds are comparable across layers of differing scale:</p>
+<div class="eq">
+  <div class="body">Ĩ<sub>c</sub><sup>(l)</sup> =
+    <span class="frac"><span class="n">I<sub>c</sub><sup>(l)</sup></span><span class="d">max<sub>c′</sub> I<sub>c′</sub><sup>(l)</sup></span></span>
+  </div>
+  <div class="tag">(2)</div>
+</div>
+
+<p><strong>SIMD-aligned channel count.</strong> The naive kept-channel count (1−<var>r</var>)·<var>C</var><sub>out</sub>
+is snapped to a multiple of the vector width, as a hard constraint applied during selection rather than
+as post-hoc rounding:</p>
+<div class="eq">
+  <div class="body">C<sub>out</sub><sup>keep</sup> = max( A, &nbsp;A · round(
+    <span class="frac"><span class="n">(1 − r) · C<sub>out</sub></span><span class="d">A</span></span>
+  ) )</div>
+  <div class="tag">(3)</div>
+</div>
+<p class="eq-where">The outer <b>max(A, ·)</b> guarantees no layer is pruned below one full vector width.</p>
+
+<p><strong>Selection.</strong> The retained channel set is the top-<var>C</var><sub>out</sub><sup>keep</sup> by importance:</p>
+<div class="eq">
+  <div class="body">𝒦<sup>(l)</sup> = argmax<sub>𝒮 ⊆ {1…C<sub>out</sub>}, |𝒮| = C<sub>out</sub><sup>keep</sup></sub> &nbsp; Σ<sub>c ∈ 𝒮</sub> Ĩ<sub>c</sub><sup>(l)</sup></div>
+  <div class="tag">(4)</div>
+</div>
+
+<p><strong>Dependency coupling.</strong> Layers whose outputs are summed (residual connections) or
+concatenated must be pruned identically. For a coupling group 𝒢 discovered by the dependency graph:</p>
+<div class="eq">
+  <div class="body">∀ l, l′ ∈ 𝒢 : &nbsp; 𝒦<sup>(l)</sup> = 𝒦<sup>(l′)</sup></div>
+  <div class="tag">(5)</div>
+</div>
+<p class="eq-where">Violating (5) produces shape mismatch at the residual addition. Enforcing it is the
+reason Torch-Pruning's DepGraph is used rather than per-layer channel selection.</p>
+
+<h3 id="m-bn"><span class="num">6.3</span>Batch-Normalisation Re-estimation</h3>
+<p>
+Removing channels invalidates the running statistics each BN layer accumulated during training, since
+those statistics describe activation distributions that no longer exist. They are recomputed by
+forward passes over the calibration set, with no gradient computation:
+</p>
+<div class="eq">
+  <div class="body">μ<sub>c</sub> =
+    <span class="frac"><span class="n">1</span><span class="d">|𝒟<sub>cal</sub>| · H · W</span></span>
+    Σ<sub>x ∈ 𝒟<sub>cal</sub></sub> Σ<sub>h,w</sub> a<sub>c,h,w</sub>(x)</div>
+  <div class="tag">(6)</div>
+</div>
+<div class="eq">
+  <div class="body">σ<sub>c</sub><sup>2</sup> =
+    <span class="frac"><span class="n">1</span><span class="d">|𝒟<sub>cal</sub>| · H · W</span></span>
+    Σ<sub>x ∈ 𝒟<sub>cal</sub></sub> Σ<sub>h,w</sub> ( a<sub>c,h,w</sub>(x) − μ<sub>c</sub> )<sup>2</sup></div>
+  <div class="tag">(7)</div>
+</div>
+<p>The normalisation applied at inference then uses the corrected statistics with the retained affine parameters:</p>
+<div class="eq">
+  <div class="body">y<sub>c</sub> = γ<sub>c</sub> ·
+    <span class="frac"><span class="n">a<sub>c</sub> − μ<sub>c</sub></span><span class="d">√( σ<sub>c</sub><sup>2</sup> + ε )</span></span>
+    + β<sub>c</sub></div>
+  <div class="tag">(8)</div>
+</div>
+
+<h3 id="m-kd"><span class="num">6.4</span>Knowledge Distillation</h3>
+<p>The temperature-softened distribution over classes for logits <var>z</var>:</p>
+<div class="eq">
+  <div class="body">p<sub>i</sub>(z; T) =
+    <span class="frac"><span class="n">exp( z<sub>i</sub> / T )</span><span class="d">Σ<sub>j</sub> exp( z<sub>j</sub> / T )</span></span>
+  </div>
+  <div class="tag">(9)</div>
+</div>
+<p>The distillation objective combines hard-label cross-entropy with the Kullback–Leibler divergence between softened teacher and student distributions:</p>
+<div class="eq">
+  <div class="body">ℒ = (1 − α) · ℒ<sub>CE</sub>( y, p(z<sub>S</sub>; 1) ) &nbsp;+&nbsp; α · T<sup>2</sup> · D<sub>KL</sub>( p(z<sub>T</sub>; T) ‖ p(z<sub>S</sub>; T) )</div>
+  <div class="tag">(10)</div>
+</div>
+<div class="eq">
+  <div class="body">D<sub>KL</sub>( p ‖ q ) = Σ<sub>i</sub> p<sub>i</sub> · log
+    <span class="frac"><span class="n">p<sub>i</sub></span><span class="d">q<sub>i</sub></span></span>
+  </div>
+  <div class="tag">(11)</div>
+</div>
+<p class="eq-where">
+<b>α ≈ 0.3</b> balances the two terms; <b>T ≈ 4</b> softens the distributions to expose inter-class
+similarity. The <b>T²</b> factor is required because the gradient of the softened cross-entropy scales
+as 1/T², so without it the KD term's gradient contribution would shrink quadratically with temperature.
+</p>
+<p>
+In this project the teacher is the <strong>original uncompressed model</strong>, held frozen:
+<var>z<sub>T</sub></var> = <var>f</var><sub>θ₀</sub>(<var>x</var>). No separate teacher is trained or
+stored, and the teacher is by construction the best available reference for its own compressed derivative.
+</p>
+
+<h3 id="m-quant"><span class="num">6.5</span>Quantization</h3>
+<p><strong>Affine (asymmetric) uniform quantization.</strong> A real value <var>x</var> maps to a
+<var>b</var>-bit integer grid:</p>
+<div class="eq">
+  <div class="body">q(x) = clamp( round(
+    <span class="frac"><span class="n">x</span><span class="d">s</span></span>
+    ) + z, &nbsp; q<sub>min</sub>, &nbsp; q<sub>max</sub> )</div>
+  <div class="tag">(12)</div>
+</div>
+<p>with de-quantization recovering an approximation of the original:</p>
+<div class="eq">
+  <div class="body">x̂ = s · ( q(x) − z )</div>
+  <div class="tag">(13)</div>
+</div>
+<p>The scale and zero-point follow from the observed dynamic range [<var>x</var><sub>min</sub>, <var>x</var><sub>max</sub>]:</p>
+<div class="eq">
+  <div class="body">s =
+    <span class="frac"><span class="n">x<sub>max</sub> − x<sub>min</sub></span><span class="d">q<sub>max</sub> − q<sub>min</sub></span></span>
+    , &nbsp;&nbsp;&nbsp; z = round( q<sub>min</sub> −
+    <span class="frac"><span class="n">x<sub>min</sub></span><span class="d">s</span></span>
+    )</div>
+  <div class="tag">(14)</div>
+</div>
+
+<p><strong>Symmetric per-channel weight quantization.</strong> For weights this project uses a
+symmetric scheme (<var>z</var> = 0) with an independent scale per output channel:</p>
+<div class="eq">
+  <div class="body">s<sub>c</sub> =
+    <span class="frac"><span class="n">max<sub>i,j,k</sub> | W<sub>c,i,j,k</sub> |</span><span class="d">2<sup>b−1</sup> − 1</span></span>
+  </div>
+  <div class="tag">(15)</div>
+</div>
+<p class="eq-where">Per-channel scaling matters because channel weight magnitudes within one convolution
+routinely differ by an order of magnitude; a single per-tensor scale would force small-magnitude
+channels into very few quantization levels.</p>
+
+<p><strong>Calibration objective.</strong> Rather than using the raw observed min/max, which is
+sensitive to outliers, the clipping range is chosen to minimise expected reconstruction error:</p>
+<div class="eq">
+  <div class="body">s<sup>*</sup> = argmin<sub>s</sub> &nbsp; 𝔼<sub>x ∼ 𝒟<sub>cal</sub></sub> ‖ x − x̂(s) ‖<sub>2</sub><sup>2</sup></div>
+  <div class="tag">(16)</div>
+</div>
+
+<p><strong>QDQ representation.</strong> ONNX Runtime's static quantization inserts explicit
+Quantize–DeQuantize pairs around operators, allowing the runtime to fuse them into a genuine
+low-precision kernel where one exists for the host ISA, and to fall back to floating point where one
+does not:</p>
+<div class="eq">
+  <div class="body">x &nbsp;→&nbsp; Q(x; s, z) &nbsp;→&nbsp; DQ(·; s, z) &nbsp;→&nbsp; op(·)</div>
+  <div class="tag">(17)</div>
+</div>
+
+<h3 id="m-sens"><span class="num">6.6</span>Per-Layer Sensitivity</h3>
+<p>
+Sensitivity is measured by perturbing exactly one layer while holding all others at full precision,
+isolating that layer's contribution to output degradation. Let <var>f</var><sub><var>l</var></sub>
+denote the network with only layer <var>l</var> quantized.
+</p>
+<p><strong>Output mean squared error:</strong></p>
+<div class="eq">
+  <div class="body">MSE<sub>l</sub> =
+    <span class="frac"><span class="n">1</span><span class="d">N</span></span>
+    Σ<sub>n=1</sub><sup>N</sup> ‖ f(x<sub>n</sub>) − f<sub>l</sub>(x<sub>n</sub>) ‖<sub>2</sub><sup>2</sup></div>
+  <div class="tag">(18)</div>
+</div>
+<p><strong>Signal-to-quantization-noise ratio</strong>, in decibels — scale-invariant, and therefore
+comparable across layers with different activation magnitudes:</p>
+<div class="eq">
+  <div class="body">SQNR<sub>l</sub> = 10 · log<sub>10</sub>
+    <span class="frac"><span class="n">Σ<sub>n</sub> ‖ f(x<sub>n</sub>) ‖<sub>2</sub><sup>2</sup></span><span class="d">Σ<sub>n</sub> ‖ f(x<sub>n</sub>) − f<sub>l</sub>(x<sub>n</sub>) ‖<sub>2</sub><sup>2</sup></span></span>
+  </div>
+  <div class="tag">(19)</div>
+</div>
+<p><strong>Accuracy damage</strong> attributable to layer <var>l</var>:</p>
+<div class="eq">
+  <div class="body">D<sub>l</sub> = Acc( f ) − Acc( f<sub>l</sub> )</div>
+  <div class="tag">(20)</div>
+</div>
+<p class="eq-where">A high <b>D<sub>l</sub></b> with low SQNR identifies a layer that should be retained
+at higher precision — the basis for a mixed-precision fallback.</p>
+
+<h3 id="m-metrics"><span class="num">6.7</span>Evaluation Metrics and Search</h3>
+
+<p><strong>Latency statistics.</strong> From <var>N</var> timed runs {<var>t</var><sub>1</sub>…<var>t<sub>N</sub></var>}
+after discarding <var>W</var> warmup iterations, with order statistics <var>t</var><sub>(1)</sub> ≤ … ≤ <var>t</var><sub>(<var>N</var>)</sub>:</p>
+<div class="eq">
+  <div class="body">T<sub>med</sub> = t<sub>(⌈N/2⌉)</sub> , &nbsp;&nbsp;&nbsp;
+    T<sub>p95</sub> = t<sub>(⌈0.95N⌉)</sub> , &nbsp;&nbsp;&nbsp;
+    σ<sub>T</sub> = √(
+    <span class="frac"><span class="n">1</span><span class="d">N − 1</span></span>
+    Σ<sub>i</sub> ( t<sub>i</sub> − t̄ )<sup>2</sup> )</div>
+  <div class="tag">(21)</div>
+</div>
+<p class="eq-where">The median is reported rather than the mean because operating-system scheduling
+produces a right-skewed distribution; p95 is reported alongside it to expose tail behaviour that the
+median conceals.</p>
+
+<p><strong>Efficiency Score (modified).</strong> The corpus proposes ranking configurations by the
+harmonic mean of accuracy and a compression score [<a href="#references">1</a>]. The published
+compression term is FLOPs-based, which contradicts this project's central premise, so the FLOPs term
+is replaced by <em>measured latency reduction</em>:</p>
+<div class="eq">
+  <div class="body">C<sub>meas</sub> =
+    <span class="frac"><span class="n">1</span><span class="d">2</span></span>
+    (
+    <span class="frac"><span class="n">T<sub>0</sub> − T</span><span class="d">T<sub>0</sub></span></span>
+    +
+    <span class="frac"><span class="n">S<sub>0</sub> − S</span><span class="d">S<sub>0</sub></span></span>
+    )</div>
+  <div class="tag">(22)</div>
+</div>
+<div class="eq">
+  <div class="body">E = HM( Â, C<sub>meas</sub> ) =
+    <span class="frac"><span class="n">2 · Â · C<sub>meas</sub></span><span class="d">Â + C<sub>meas</sub></span></span>
+    , &nbsp;&nbsp; Â =
+    <span class="frac"><span class="n">Acc</span><span class="d">Acc<sub>0</sub></span></span>
+  </div>
+  <div class="tag">(23)</div>
+</div>
+<p class="eq-where">Subscript 0 denotes the uncompressed baseline; <b>S</b> is on-disk size. The harmonic
+mean penalises configurations that sacrifice one dimension heavily to gain in the other.</p>
+
+<p><strong>Translation efficiency.</strong> The project's headline analytical quantity — realised
+speedup as a fraction of the speedup implied by whichever proxy metric was claimed:</p>
+<div class="eq">
+  <div class="body">η =
+    <span class="frac"><span class="n">1 − T / T<sub>0</sub></span><span class="d">1 − M / M<sub>0</sub></span></span>
+  </div>
+  <div class="tag">(24)</div>
+</div>
+<p class="eq-where">
+<b>M</b> is the proxy metric as reported by the source being evaluated — parameter count where that is
+what the source claims, FLOPs/MACs where that is what the source claims. The two are deliberately not
+conflated into one column of Table 3: <var>η</var> answers "how much of *this source's own claimed
+reduction* survived contact with a real clock", so <var>M</var> is whatever that source measured
+before compression was applied. <b>η = 1</b> means the claimed reduction translated fully into latency
+reduction; <b>η &lt; 1</b> means it did not; <b>η &gt; 1</b> would mean latency improved by *more* than
+the proxy implied. The corpus datapoint of 30% parameters removed for 14.6%
+latency gain corresponds to <b>η ≈ 0.49</b> — less than half of the implied benefit realised
+(Table 3).
+</p>
+
+<p><strong>Budget-driven search.</strong> Given a latency budget <var>T</var><sub>b</sub> and an
+accuracy-drop budget <var>A</var><sub>b</sub>, the search returns the <em>least aggressive</em>
+configuration satisfying both, rather than the most compressed:</p>
+<div class="eq">
+  <div class="body">θ<sup>*</sup> = argmin<sub>θ ∈ Θ</sub> &nbsp; r(θ) &nbsp;&nbsp; subject to &nbsp;&nbsp;
+    T(θ) ≤ T<sub>b</sub> &nbsp; ∧ &nbsp; Acc<sub>0</sub> − Acc(θ) ≤ A<sub>b</sub></div>
+  <div class="tag">(25)</div>
+</div>
+<p class="eq-where">
+Θ is the configuration space of (pruning ratio, precision). Both constraint quantities are
+<em>measured</em>, not predicted, so evaluation of feasibility requires an actual benchmark run —
+which is why the search proceeds greedily over a coarse ratio grid rather than by continuous optimisation.
+</p>
+
+<!-- ══════════════ 7. METHODOLOGY ══════════════ -->
+<h2 id="methodology"><span class="num">7</span>Methodology</h2>
+
+<h3 id="me-data"><span class="num">7.1</span>Data and Models</h3>
+<p>
+<strong>Dataset.</strong> CIFAR-10 — 60,000 32×32 colour images across 10 classes, split 50,000 train
+/ 10,000 test. Normalisation uses per-channel statistics μ = (0.4914, 0.4822, 0.4465),
+σ = (0.2470, 0.2435, 0.2616). Training augmentation is random 32×32 crop with 4-pixel padding plus
+random horizontal flip; evaluation applies normalisation only.
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 15.</b> Model architectures under study.</caption>
+  <thead><tr><th>Model</th><th>Structure</th><th>Role</th></tr></thead>
+  <tbody>
+    <tr><td><strong>ResNet-56</strong></td><td>9 BasicBlocks per stage, channels 16/32/64, 6<var>n</var>+2 layers</td><td>Primary subject — residual coupling makes pruning non-trivial and exercises DepGraph</td></tr>
+    <tr><td><strong>VGG-16-BN</strong></td><td>13 conv layers with batch-norm, single FC head</td><td>Secondary — plain sequential topology; cleanest setting to expose the SIMD alignment staircase</td></tr>
+    <tr><td>MobileNetV2 <em>(optional)</em></td><td>Depthwise-separable, ImageNet-pretrained</td><td>Contrast case — depthwise convolutions resist both pruning speedup and INT8 acceleration</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="me-measure"><span class="num">7.2</span>Measurement Protocol</h3>
+<p>
+The protocol below is fixed for every measurement in the project. Deviating for any single measurement
+would invalidate cross-stage comparison, which is the project's central claim.
+</p>
+<div class="tw">
+<table>
+  <caption><b>Table 16.</b> Measurement protocol.</caption>
+  <thead><tr><th>Parameter</th><th>Value</th><th>Rationale</th></tr></thead>
+  <tbody>
+    <tr><td>Runtime</td><td>ONNX Runtime, CPUExecutionProvider</td><td>FP32, FP16 and INT8 compared on one runtime</td></tr>
+    <tr><td>Graph optimisation</td><td><code>ORT_ENABLE_ALL</code></td><td>Fusion applied uniformly, so it is not a confound</td></tr>
+    <tr><td>Threads</td><td><code>intra_op = 1</code>, <code>inter_op = 1</code></td><td>Eliminates scheduling variance; matches batch-1 CPU inference</td></tr>
+    <tr><td>Batch size</td><td>1</td><td>The realistic single-sample inference regime</td></tr>
+    <tr><td>Warmup</td><td>50 iterations, discarded</td><td>Excludes allocation, page faults, cache warming</td></tr>
+    <tr><td>Timed runs</td><td>200</td><td>Sufficient for stable median and p95 order statistics</td></tr>
+    <tr><td>Reported</td><td>Median, p95, standard deviation</td><td>Median resists right-skew; p95 exposes tail</td></tr>
+    <tr><td>Provenance</td><td>CPU model, ISA features, library versions</td><td>Recorded with every result — no number is quoted without its machine</td></tr>
+  </tbody>
+</table>
+</div>
+
+<h3 id="me-design"><span class="num">7.3</span>Experimental Design</h3>
+<p>
+A full factorial sweep over pruning ratio and numeric precision, repeated per architecture:
+</p>
+<div class="eq">
+  <div class="body">r ∈ { 0, 0.1, 0.2, 0.3, 0.4, 0.5 } &nbsp;×&nbsp; precision ∈ { FP32, FP16, INT8 } &nbsp;=&nbsp; 18 cells</div>
+  <div class="tag">(26)</div>
+</div>
+<p>Each cell yields the tuple ⟨top-1 accuracy, median latency, p95 latency, disk size, parameter count⟩.
+The per-stage measurement schedule within a single cell is:</p>
+<div class="tw">
+<table>
+  <caption><b>Table 17.</b> Per-stage measurement schedule and what each isolates.</caption>
+  <thead><tr><th>#</th><th>After stage</th><th>Isolates</th></tr></thead>
+  <tbody>
+    <tr><td>M0</td><td>Baseline (no compression)</td><td>Reference point for all deltas</td></tr>
+    <tr><td>M1</td><td>Pruning, before recovery</td><td>Raw structural damage, including BN statistics invalidation</td></tr>
+    <tr><td>M2</td><td>BN re-estimation</td><td><strong>How much recovers with zero gradient computation</strong></td></tr>
+    <tr><td>M3</td><td>Distillation fine-tune</td><td>Additional recovery attributable to backpropagation</td></tr>
+    <tr><td>M4</td><td>Quantization</td><td>Numerical precision cost and latency benefit</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-find">
+  <span class="lead">Why M1 and M2 are separated</span>
+  <p>Reporting only the post-fine-tuning result — as the corpus generally does — conflates two distinct
+  effects: statistics invalidation, which is free to repair, and genuine capacity loss, which is not.
+  Separating M1 from M2 quantifies a recovery that costs forward passes alone, and this measurement
+  does not appear anywhere in the surveyed literature.</p>
+</div>
+
+<h3 id="me-repro"><span class="num">7.4</span>Reproducibility</h3>
+<ul>
+  <li>Fixed random seeds for data ordering, calibration subset selection, and initialisation.</li>
+  <li>Every measurement serialised to JSON with the full settings object and host context attached.</li>
+  <li>Exact dependency versions pinned and recorded (§<a href="#implementation">8</a>).</li>
+  <li>The compressed artifact is re-loaded and evaluated in a <em>fresh process</em>, confirming it is a
+      genuinely deployable file rather than an in-memory benchmark artefact.</li>
+</ul>
+
+<!-- ══════════════ 8. IMPLEMENTATION ══════════════ -->
+<h2 id="implementation"><span class="num">8</span>Implementation</h2>
+<div class="tw">
+<table>
+  <caption><b>Table 18.</b> Verified environment.</caption>
+  <thead><tr><th>Component</th><th>Version / specification</th></tr></thead>
+  <tbody>
+    <tr><td>Host CPU</td><td>Apple M5, arm64, 10 cores (6 performance + 4 efficiency), 16 GB</td></tr>
+    <tr><td>Relevant ISA features</td><td><code>FEAT_I8MM</code> = 1, <code>FEAT_DotProd</code> = 1</td></tr>
+    <tr><td>Python</td><td>3.14.6</td></tr>
+    <tr><td>PyTorch</td><td>2.14.0 (MPS backend available)</td></tr>
+    <tr><td>torchvision</td><td>0.29.0</td></tr>
+    <tr><td>ONNX / ONNX Runtime</td><td>1.22.0 / 1.29.0</td></tr>
+    <tr><td>Torch-Pruning</td><td>1.6.1</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-note">
+  <span class="lead">Host ISA disclosure</span>
+  <p>The host supports <code>FEAT_I8MM</code> — ARM's 8-bit integer matrix-multiply extension — which
+  means ONNX Runtime dispatches well-optimised INT8 kernels. INT8 results obtained here therefore
+  represent a <strong>favourable case</strong>. All quantization findings are reported as
+  machine-specific and are not generalised to CPUs lacking equivalent support, where the surveyed
+  literature indicates INT8 may yield no speedup at all.</p>
+</div>
+
+<h4>Build sequence</h4>
+<ol>
+  <li>Environment setup and dependency verification.</li>
+  <li>Baseline training — ResNet-56 on CIFAR-10 via MPS; checkpoint retained as reference and teacher.</li>
+  <li>Measurement harness — latency, accuracy, size, host context.</li>
+  <li>ONNX export and quantization — first before/after result.</li>
+  <li>Structured pruning and BN re-estimation.</li>
+  <li>Distillation fine-tune.</li>
+  <li>Per-layer sensitivity analysis.</li>
+  <li>Budget-driven search.</li>
+  <li>Full sweep and report generation.</li>
+  <li>Demonstration notebook — one image, both models, side by side.</li>
+</ol>
+
+<!-- ══════════════ 9. RESULTS ══════════════ -->
+<h2 id="results"><span class="num">9</span>Results and Analysis Plan</h2>
+
+<h3 id="res-har"><span class="num">9.1</span>Completed Case Study: HAR ResNet-18</h3>
+<p>
+Before running the planned CIFAR-10 sweep (§<a href="#res-sweep">9.2</a>), the pipeline was validated
+end-to-end on a genuine, non-toy subject: a torchvision <code>resnet18</code>, ImageNet-pretrained and
+fine-tuned (backbone frozen except <code>layer4</code> and the classification head) to 15 human-action
+classes on 224×224 photographs — the Kaggle "Human Action Recognition (HAR) Dataset". Training ran on
+Colab (T4 GPU); every number below is measured locally, on the host described in §<a href="#implementation">8</a>,
+under the identical protocol of §<a href="#me-measure">7.2</a>.
+</p>
+<p>
+The trained checkpoint reached <b>75.50% top-1</b> on a held-out test split. That figure was
+independently re-measured after importing the weights (§<a href="#me-repro">7.4</a>'s reproducibility
+rule in practice) and matched the training run's own reported number to two decimal places —
+75.50% both times — confirming the state_dict, class-index order, and held-out split all
+round-tripped cleanly between the two machines.
+</p>
+
+<h4>Result A — quantize only</h4>
+<div class="tw">
+<table>
+  <caption><b>Table 19.</b> HAR ResNet-18, INT8 quantization with no structural change.</caption>
+  <thead><tr><th>Stage</th><th>Precision</th><th class="num">Top-1 (%)</th><th class="num">Δ (pp)</th><th class="num">Latency (ms)</th><th class="num">p95 (ms)</th><th class="num">Size (MB)</th><th class="num">Params</th><th class="num">η</th></tr></thead>
+  <tbody>
+    <tr><td>Baseline</td><td>FP32</td><td class="num">75.50</td><td class="num">—</td><td class="num">15.370</td><td class="num">15.643</td><td class="num">42.66</td><td class="num">11,185,231</td><td class="num">1.00</td></tr>
+    <tr><td>Quantized</td><td>INT8</td><td class="num">74.66</td><td class="num">−0.85</td><td class="num"><strong>8.026</strong></td><td class="num">8.529</td><td class="num"><strong>10.79</strong></td><td class="num">11,185,231</td><td class="num">∞*</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-find">
+  <span class="lead">Translation efficiency is undefined here — that is itself the result</span>
+  <p>Quantization changes numeric precision, not architecture — the parameter count is <b>identical</b>
+  before and after (11,185,231 both rows). Equation (24)'s denominator, <var>1 − M/M₀</var>, is
+  therefore exactly zero: a parameter- or FLOPs-based proxy predicts <b>0% possible speedup</b> from
+  this stage. The host measured <b>47.8% lower latency</b> (15.370 ms → 8.026 ms, a 1.92× speedup)
+  for 0.85 percentage points of accuracy. This is a cleaner illustration of §<a href="#bg-latency">2.4</a>'s
+  thesis than any literature datapoint in Table 3, because the proxy metric doesn't just
+  under-predict the effect — quantization is invisible to it entirely, by construction.</p>
+</div>
+
+<h4>Result B — structured pruning (30% ratio) + quantize</h4>
+<div class="tw">
+<table>
+  <caption><b>Table 20.</b> HAR ResNet-18, structured pruning (30% channel ratio → 53.1% of parameters,
+  per §<a href="#m-prune">6.2</a>'s SIMD-aligned selection) followed by BN re-estimation and INT8 quantization.</caption>
+  <thead><tr><th>Stage</th><th>Precision</th><th class="num">Top-1 (%)</th><th class="num">Δ (pp)</th><th class="num">Latency (ms)</th><th class="num">p95 (ms)</th><th class="num">Size (MB)</th><th class="num">Params</th></tr></thead>
+  <tbody>
+    <tr><td>M0 · Baseline</td><td>FP32</td><td class="num">75.50</td><td class="num">—</td><td class="num">15.304</td><td class="num">15.418</td><td class="num">42.66</td><td class="num">11,185,231</td></tr>
+    <tr><td>M1 · Pruned, pre-recovery</td><td>FP32</td><td class="num"><strong>10.00</strong></td><td class="num">−65.50</td><td class="num">10.031</td><td class="num">10.229</td><td class="num">20.00</td><td class="num">5,241,983</td></tr>
+    <tr><td>M2 · + BN re-estimation</td><td>FP32</td><td class="num">39.10</td><td class="num">−36.40</td><td class="num">10.029</td><td class="num">10.188</td><td class="num">20.00</td><td class="num">5,241,983</td></tr>
+    <tr><td>M4 · + INT8 quantization</td><td>INT8</td><td class="num">39.63</td><td class="num"><strong>−35.87</strong></td><td class="num"><strong>4.373</strong></td><td class="num">4.624</td><td class="num"><strong>5.09</strong></td><td class="num">5,241,983</td></tr>
+  </tbody>
+</table>
+</div>
+<div class="callout c-warn">
+  <span class="lead">A negative result, reported rather than hidden</span>
+  <p>Final configuration: <b>3.50× faster, 8.4× smaller, but 35.87 percentage points less accurate</b> —
+  not a usable trade-off by any reasonable budget. Two things are visible directly in the table that
+  the corpus (§<a href="#sv-quant">3.4</a>) predicted but never demonstrated on one held-out model:</p>
+  <p><b>The M1 → M2 split (§<a href="#me-design">7.3</a>) is doing real work.</b> Immediately
+  post-pruning the model is near chance level (10.00%, against 6.7% chance for 15 classes) — almost
+  entirely a batch-norm statistics artefact, per §<a href="#m-bn">6.3</a>. Free re-estimation recovers
+  29.1 of those 65.5 lost points (39.10%) with zero gradient computation. The remaining 36.4-point gap
+  is genuine capacity loss that only backpropagation (distillation, §<a href="#m-kd">6.4</a> — not run
+  in this configuration) or a smaller ratio could address.</p>
+  <p><b>Why capacity loss dominated here specifically:</b> only <code>layer4</code> and the
+  classification head were ever fine-tuned for this task (§<a href="#me-data">7.1</a>) — every earlier
+  layer is still the original frozen ImageNet backbone. Structured pruning removed channels from those
+  frozen, general-purpose feature detectors, not from anything learned specifically for this 15-class
+  problem, which is a materially riskier edit than pruning a fully task-trained network and is the
+  likely reason free recovery alone could not close the gap.</p>
+</div>
+
+<h4>Sensitivity ranking</h4>
+<p>Per-layer 8-bit sensitivity (§<a href="#m-sens">6.6</a>), worst five by SQNR, computed on the
+baseline model before either result above:</p>
+<div class="tw">
+<table>
+  <caption><b>Table 21.</b> Most quantization-sensitive layers, HAR ResNet-18.</caption>
+  <thead><tr><th>Layer</th><th class="num">Params</th><th class="num">SQNR (dB)</th><th class="num">MSE</th></tr></thead>
+  <tbody>
+    <tr><td><code>conv1</code></td><td class="num">9,408</td><td class="num">33.11</td><td class="num">3.970e-03</td></tr>
+    <tr><td><code>layer1.0.conv1</code></td><td class="num">36,864</td><td class="num">37.34</td><td class="num">1.497e-03</td></tr>
+    <tr><td><code>layer1.1.conv1</code></td><td class="num">36,864</td><td class="num">38.43</td><td class="num">1.165e-03</td></tr>
+    <tr><td><code>layer2.0.downsample.0</code></td><td class="num">8,192</td><td class="num">40.56</td><td class="num">7.134e-04</td></tr>
+    <tr><td><code>layer2.0.conv1</code></td><td class="num">73,728</td><td class="num">41.03</td><td class="num">6.409e-04</td></tr>
+  </tbody>
+</table>
+</div>
+<p class="eq-where">The stem (<code>conv1</code>) and earliest residual blocks rank worst — consistent
+with the general pattern that early layers, operating directly on raw pixel statistics rather than
+learned task-specific features, are the least tolerant of reduced precision. Despite this, INT8
+quantization of the full network (Result A) cost only 0.85pp, indicating this network's worst-case
+per-layer sensitivity is mild in absolute terms even where it is worst relatively.</p>
+
+<h3 id="res-sweep"><span class="num">9.2</span>Planned: CIFAR-10 Ratio × Precision Sweep</h3>
+<p>The remaining systematic sweep described in §<a href="#me-design">7.3</a> reports every stage under
+the same protocol, across the full <var>r</var> × precision grid, on ResNet-56 and VGG-16-BN:</p>
+<div class="tw">
+<table>
+  <caption><b>Table 22.</b> Primary result template — ResNet-56 / CIFAR-10, pruning ratio <var>r</var> = 0.3.</caption>
+  <thead><tr><th>Stage</th><th class="num">Top-1 (%)</th><th class="num">Δ (pp)</th><th class="num">Latency (ms)</th><th class="num">p95 (ms)</th><th class="num">Size (MB)</th><th class="num">Params</th><th class="num">η</th></tr></thead>
+  <tbody>
+    <tr><td>M0 · Baseline FP32</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">1.00</td></tr>
+    <tr><td>M1 · Pruned, pre-recovery</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+    <tr><td>M2 · + BN re-estimation</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+    <tr><td>M3 · + Distillation</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+    <tr><td>M4 · + INT8 quantization</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td><td class="num">—</td></tr>
+  </tbody>
+</table>
+</div>
+<h4>Planned analyses</h4>
+<ol>
+  <li><strong>Pareto front</strong> — accuracy against measured latency across all 18 cells,
+      identifying non-dominated configurations.</li>
+  <li><strong>Translation-efficiency curve</strong> — <var>η</var> as a function of pruning ratio.
+      §<a href="#res-har">9.1</a>'s single datapoint (η ≈ 1.34 for the 30%-ratio HAR case, computed
+      from the same baseline/final latencies and parameter counts as Table 20) already shows η is not
+      confined to (0, 1) — combining pruning and quantization can exceed what parameter reduction
+      alone implies, since quantization's contribution is invisible to a parameter-based proxy. The
+      sweep should establish whether that holds as a function of ratio, or is specific to this model.</li>
+  <li><strong>SIMD staircase</strong> — latency against retained channel count on VGG-16-BN, testing
+      whether alignment to multiples of 8/16/32 produces discrete steps rather than a smooth curve.</li>
+  <li><strong>Free-recovery attribution</strong> — the accuracy delta M1 → M2, quantifying what
+      batch-norm re-estimation recovers at zero gradient cost. §<a href="#res-har">9.1</a> found this
+      recovers 29.1 of 65.5 lost points (44%) on a partially-frozen network; whether a fully
+      task-trained CIFAR model recovers a larger fraction is an open question this sweep answers.</li>
+  <li><strong>Per-layer sensitivity</strong> — ranked MSE/SQNR, testing whether the layers that dominate
+      accuracy loss are those the corpus predicts (early convolutions, depthwise separable layers).</li>
+</ol>
+
+<!-- ══════════════ 10. VALIDITY ══════════════ -->
+<h2 id="validity"><span class="num">10</span>Threats to Validity</h2>
+<div class="tw">
+<table>
+  <caption><b>Table 23.</b> Threats to validity and mitigations.</caption>
+  <thead><tr><th>Threat</th><th>Impact</th><th>Mitigation</th></tr></thead>
+  <tbody>
+    <tr><td><strong>Single hardware platform</strong></td><td>Results describe one arm64 CPU with <code>FEAT_I8MM</code>; INT8 appears more favourable here than on CPUs lacking it</td><td>Explicitly scoped as machine-specific; ISA features recorded with every measurement</td></tr>
+    <tr><td><strong>Single dataset scale</strong></td><td>32×32 inputs; conclusions may not transfer to higher-resolution regimes with different cache behaviour</td><td>Stated as a limitation; MobileNetV2 at ImageNet resolution included as an optional contrast case</td></tr>
+    <tr><td><strong>Measurement noise</strong></td><td>A laptop is not a quiet server; background load perturbs timing</td><td>Pinned threads, 50-iteration warmup, 200 runs, median and p95, standard deviation reported</td></tr>
+    <tr><td><strong>Calibration set size</strong></td><td>512 images is a design choice that affects both BN statistics and quantization scales</td><td>Sensitivity to this parameter spot-checked as a secondary experiment</td></tr>
+    <tr><td><strong>Single pruning criterion</strong></td><td>L1 magnitude only; Taylor or Fisher criteria may rank channels differently</td><td>Acknowledged; criterion is a modular parameter and alternatives are future work</td></tr>
+    <tr><td><strong>Distillation cost not fully explored</strong></td><td>Fine-tuning epochs are bounded by available compute, so reported recovery is a lower bound</td><td>Epoch budget reported alongside the accuracy figure</td></tr>
+  </tbody>
+</table>
+</div>
+
+<!-- ══════════════ 11. FUTURE WORK ══════════════ -->
+<h2 id="future"><span class="num">11</span>Future Work</h2>
+<ol>
+  <li><strong>Cross-ISA validation.</strong> The corpus indicates INT8 behaviour diverges sharply on
+      CPUs without matrix-multiply or dot-product extensions. Repeating the sweep on an x86 machine
+      without VNNI, and on ARM without <code>FEAT_I8MM</code>, would test whether the recommendations
+      derived here invert on weaker hardware.</li>
+  <li><strong>Interleaved prune–distill.</strong> Wang et al. [<a href="#references">2</a>] report
+      per-epoch interleaving beating both sequential orderings by a wide margin. With greater compute,
+      testing this against the sequential default would directly address the strongest ordering
+      evidence in the corpus.</li>
+  <li><strong>Mixed-precision allocation.</strong> The per-layer sensitivity data already collected is
+      sufficient to drive selective FP32 retention for the worst-SQNR layers; the remaining work is
+      accounting for the Q/DQ boundary cost such islands introduce.</li>
+  <li><strong>Runtime-level tuning.</strong> Thread count, execution provider, and memory layout were
+      held fixed here to make measurements comparable. Treating them as an optimisation surface in
+      their own right is a substantial, and entirely zero-accuracy-cost, direction.</li>
+  <li><strong>Alternative importance criteria.</strong> Taylor-expansion and Fisher-information ranking,
+      evaluated against the same measured-latency yardstick.</li>
+</ol>
+
+<!-- ══════════════ 12. REFERENCES ══════════════ -->
+<h2 id="references"><span class="num">12</span>References</h2>
+<ol class="refs">
+  <li>W. Chae and K. Seo. "Pipeline of Pruning, Knowledge Distillation, and Quantization for Model Compression."
+      <span class="venue">Journal of Electrical Engineering &amp; Technology</span>, vol. 21, pp. 2099–2105, 2026.</li>
+  <li>Z. Wang, L. Shi, Z. Mei, X. Zhao, Z. Wang, and J. Li. "Iterative knowledge distillation and pruning for
+      model compression in unsupervised domain adaptation." <span class="venue">Pattern Recognition</span>, vol. 164, 111512, 2025.</li>
+  <li>R. Abdel-Salam, A. H. Abdel-Gawad, and A. G. Wassal. "VLCQ: Post-training quantization for deep neural
+      networks using variable length coding." <span class="venue">Future Generation Computer Systems</span>, vol. 166, 107654, 2025.
+      <span class="flag">— storage technique, not latency</span></li>
+  <li>Y. He, J. Lin, Z. Liu, H. Wang, L.-J. Li, and S. Han. "AMC: AutoML for Model Compression and Acceleration
+      on Mobile Devices." <span class="venue">ECCV</span>, 2018. <span class="flag">— highest-quality evidence in the corpus</span></li>
+  <li>W. Chen, H. Qiu, J. Zhuang, C. Zhang, Y. Hu, Q. Lu, T. Wang, Y. Shi, M. Huang, and X. Xu.
+      "Quantization of Deep Neural Networks for Accurate Edge Computing."
+      <span class="venue">ACM JETC</span>, vol. 17, no. 4, art. 54, 2021. <span class="flag">— memory-only; runtime unaffected</span></li>
+  <li>Y. Chen, C. Li, L. Gong, X. Wen, Y. Zhang, and W. Shi. "A deep neural network compression algorithm based
+      on knowledge transfer for edge devices." <span class="venue">Computer Communications</span>, vol. 163, pp. 186–194, 2020.
+      <span class="flag">— only ARM CPU CNN latency in the corpus</span></li>
+  <li>N. A. Khan and A. M. S. Rafat. "Optimizing Deep Learning Models for Resource-Constrained Environments With
+      Cluster-Quantized Knowledge Distillation." <span class="venue">Engineering Reports</span>, vol. 7, e70187, 2025.
+      <span class="flag">— DISCARDED: training accuracy reported as headline; invalid compression ratio</span></li>
+  <li>A. N. M. Rafee, J. Clear, and J. Noor. "Composite human activity recognition utilizing knowledge distillation
+      and sensor fusion focusing on resource constrained microcontrollers."
+      <span class="venue">Expert Systems With Applications</span>, vol. 298, 129652, 2026.
+      <span class="flag">— per-operator latency profile; INT8 rejected at −6.12 pp</span></li>
+  <li>L. Xu, J. Ren, Z. Huang, W. Zheng, and Y. Chen. "Improving Knowledge Distillation via Head and Tail Categories."
+      <span class="venue">IEEE TCSVT</span>, vol. 34, no. 5, 2024.</li>
+  <li>X. Fang, L. Chen, H. Yin, X. Chen, and W. Wang. "Communication-Efficient Federated Learning With
+      Quantization-Aware Training Design." <span class="venue">IEEE Transactions on Machine Learning in Communications
+      and Networking</span>, vol. 4, 2026. <span class="flag">— latency claim single-source, unusable</span></li>
+  <li>M. Zhou, R. Mao, S. Sripada, and X. Li. "AEMC: Aggregator-efficient model compression for streamlining LLMs."
+      <span class="venue">Neurocomputing</span>, vol. 672, 132779, 2026. <span class="flag">— LLM-specific; no latency measured</span></li>
+  <li>L. Qiu, E. Bai, Y. Wu, Y. Cao, and X.-q. Jiang. "Image Compression Model Based on Dynamic Convolution and
+      Vision Mamba." <span class="venue">IET Image Processing</span>, vol. 19, e70080, 2025.
+      <span class="flag">— off-topic (image codec); retained for its FLOPs–latency decorrelation evidence</span></li>
+  <li>"Model Compression Studio (Pure Software) — Architecture &amp; Product Specification."
+      <span class="venue">Internal design document</span>. <span class="flag">— superseded; GPU-oriented premise</span></li>
+</ol>
+
+<hr>
+<p style="font-size:12.5px; color:var(--slate-400); text-align:center; margin-top:36px;">
+CNN Compression Toolkit — Major Project Documentation<br>
+All performance figures produced by this system are measured wall-clock quantities on the recorded host.
+</p>
+
+</main>
+
+<script>
+(function(){
+  const links = Array.from(document.querySelectorAll('#toc a'));
+  const map = new Map();
+  links.forEach(a => {
+    const el = document.getElementById(a.getAttribute('href').slice(1));
+    if (el) map.set(el, a);
+  });
+
+  let active = null;
+  const setActive = a => {
+    if (a === active) return;
+    if (active) active.classList.remove('active');
+    a. classList.add('active');
+    active = a;
+    const sb = document.getElementById('sidebar');
+    const top = a.offsetTop, bot = top + a.offsetHeight;
+    if (top < sb.scrollTop || bot > sb.scrollTop + sb.clientHeight) {
+      sb.scrollTo({ top: top - sb.clientHeight / 2, behavior: 'smooth' });
+    }
+  };
+
+  const observer = new IntersectionObserver(entries => {
+    const visible = entries
+      .filter(e => e.isIntersecting)
+      .sort((a, b) => a.boundingClientRect.top - b.boundingClientRect.top);
+    if (visible.length) {
+      const a = map.get(visible[0].target);
+      if (a) setActive(a);
+    }
+  }, { rootMargin: '0px 0px -72% 0px', threshold: 0 });
+
+  map.forEach((a, el) => observer.observe(el));
+
+  // fallback for the very top of the document
+  window.addEventListener('scroll', () => {
+    if (window.scrollY < 120 && links.length) setActive(links[0]);
+  }, { passive: true });
+})();
+</script>
+
+</body>
+</html>

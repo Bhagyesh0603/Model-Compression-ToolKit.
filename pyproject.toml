@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "compresskit"
+version = "0.1.0"
+description = "CPU-latency-aware CNN compression: prune, distill, quantize, and measure every stage on real hardware"
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+dependencies = [
+    "torch>=2.4",
+    "torchvision>=0.19",
+    "torch-pruning>=1.5",
+    "onnx>=1.16",
+    "onnxruntime>=1.19",
+    "numpy>=1.24",
+    "matplotlib>=3.8",
+]
+
+[project.optional-dependencies]
+dev = ["pytest>=8.0"]
+
+[project.scripts]
+compresskit = "compresskit.cli:main"
+
+[tool.setuptools]
+packages = ["compresskit"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+filterwarnings = ["ignore::UserWarning", "ignore::DeprecationWarning"]
+
+[tool.ruff]
+line-length = 118

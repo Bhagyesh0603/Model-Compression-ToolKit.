@@ -1,0 +1,358 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1200" width="1600" height="1200" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrowG" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowV" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6D28D9"/>
+    </marker>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0F172A" flood-opacity="0.14"/>
+    </filter>
+    <linearGradient id="decisionGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E9E7FE"/>
+      <stop offset="1" stop-color="#DCD9FC"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title{font-size:30px;font-weight:700;fill:#0F172A;text-anchor:middle;}
+    .subtitle{font-size:15px;font-style:italic;fill:#475569;text-anchor:middle;}
+    .label{font-size:15.5px;font-weight:700;fill:#0F172A;text-anchor:middle;}
+    .sub{font-size:11.5px;fill:#334155;text-anchor:middle;}
+    .badgetxt{font-size:10px;font-weight:700;fill:#FFFFFF;text-anchor:middle;}
+    .arrlabel{font-size:11px;font-style:italic;fill:#334155;text-anchor:middle;}
+    .sectiontag{font-size:11.5px;font-weight:700;fill:#4338CA;letter-spacing:0.5px;}
+    .legendtitle{font-size:14px;font-weight:700;fill:#0F172A;}
+    .legendtext{font-size:12px;fill:#334155;}
+    .legendsmall{font-size:10px;fill:#475569;}
+    .footer{font-size:10.5px;fill:#94A3B8;text-anchor:end;}
+    .pkgtitle{font-size:17px;font-weight:700;fill:#4338CA;text-anchor:middle;}
+  </style>
+
+  <rect x="0" y="0" width="1600" height="1200" fill="#F8FAFC"/>
+
+  <text class="title" x="800" y="55">Model Compression ToolKit — Software Architecture</text>
+  <text class="subtitle" x="800" y="82">Component / package view — companion to architecture-diagram.svg (pipeline &amp; data-flow view)</text>
+
+  <!-- ============ PACKAGE OUTER BOX (background, drawn early) ============ -->
+  <rect x="40" y="250" width="1520" height="440" rx="18" fill="#FFFFFF" stroke="#4338CA" stroke-width="3" stroke-dasharray="10,6"/>
+  <text class="pkgtitle" x="800" y="277">CORE PACKAGE  ·  mctk   —   single pip-installable library</text>
+
+  <!-- ============ CONNECTORS (under module/interface/storage nodes) ============ -->
+  <g stroke="#64748B" stroke-width="2.25" fill="none">
+    <!-- interface -> package -->
+    <path d="M280,205 L280,250" marker-end="url(#arrowG)"/>
+    <path d="M800,205 L800,250" marker-end="url(#arrowG)"/>
+    <path d="M1320,205 L1320,250" marker-end="url(#arrowG)"/>
+    <!-- row A sequential -->
+    <path d="M340,380 L360,380" marker-end="url(#arrowG)"/>
+    <path d="M640,380 L660,380" marker-end="url(#arrowG)"/>
+    <!-- row B sequential -->
+    <path d="M340,570 L360,570" marker-end="url(#arrowG)"/>
+    <path d="M640,570 L660,570" marker-end="url(#arrowG)"/>
+    <path d="M940,570 L960,570" marker-end="url(#arrowG)"/>
+    <path d="M1240,570 L1260,570" marker-end="url(#arrowG)"/>
+    <!-- orchestrator kicks off pipeline -->
+    <path d="M800,460 L800,468 L200,468 L200,490" marker-end="url(#arrowG)"/>
+    <!-- package -> storage -->
+    <path d="M280,690 L280,730" marker-end="url(#arrowG)"/>
+    <path d="M1320,690 L1320,730" marker-end="url(#arrowG)"/>
+  </g>
+  <g stroke="#6D28D9" stroke-width="2.1" fill="none" stroke-dasharray="6,4">
+    <!-- search <-> diagnose feedback loop -->
+    <path d="M940,380 L960,380" marker-start="url(#arrowV)" marker-end="url(#arrowV)"/>
+    <!-- pipeline stage 1 result -> sensitivity diagnosis -->
+    <path d="M200,490 L200,478 L1100,478 L1100,460" marker-end="url(#arrowV)"/>
+    <!-- calibration data <-> quantization (bidirectional) -->
+    <path d="M800,690 L800,730" marker-start="url(#arrowV)" marker-end="url(#arrowV)"/>
+  </g>
+  <!-- ============ INTERFACE LAYER (3 boxes) ============ -->
+  <g>
+    <rect x="50" y="115" width="460" height="90" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="280" y="158">Tier 1 API</text>
+    <text class="sub" x="280" y="178">mctk.compress(model, budget="latency&lt;50ms,acc_drop&lt;1%")</text>
+    <circle cx="280" cy="115" r="22" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(280,115)" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round">
+      <polygon points="3,-12 -6,1 -1,1 -4,12 7,-2 2,-2" fill="#334155" stroke="none"/>
+    </g>
+  </g>
+  <g>
+    <rect x="570" y="115" width="460" height="90" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="158">Tier 2 API</text>
+    <text class="sub" x="800" y="178">mctk.Pipeline().prune().distill().quantize()</text>
+    <circle cx="800" cy="115" r="22" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(800,115)" stroke="#334155" stroke-width="2" fill="none">
+      <rect x="-11" y="-5" width="12" height="10" rx="5"/>
+      <rect x="-1" y="-5" width="12" height="10" rx="5"/>
+    </g>
+  </g>
+  <g>
+    <rect x="1090" y="115" width="460" height="90" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1320" y="158">CLI / Notebook</text>
+    <text class="sub" x="1320" y="178">mctk-cli run · interactive exploration &amp; overrides</text>
+    <circle cx="1320" cy="115" r="22" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1320,115)" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-12" y="-9" width="24" height="18" rx="2"/>
+      <polyline points="-7,-3 -2,0 -7,3"/>
+      <line x1="0" y1="3" x2="6" y2="3"/>
+    </g>
+  </g>
+
+  <!-- ============ ROW A: CONTROL & SUPPORT MODULES ============ -->
+  <!-- A1 CPU Capability Probe -->
+  <g>
+    <rect x="60" y="300" width="280" height="160" rx="14" fill="#FEF3C7" stroke="#B45309" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="200" y="338">CPU Capability Probe</text>
+    <text class="sub" x="200" y="358">Detects VNNI / AVX2 / AVX-512 /</text>
+    <text class="sub" x="200" y="373">ARM NEON-dotprod via CPUID</text>
+    <rect x="150" y="418" width="100" height="22" rx="11" fill="#B45309"/>
+    <text class="badgetxt" x="200" y="433">NEW</text>
+    <circle cx="200" cy="300" r="22" fill="#FFFFFF" stroke="#B45309" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(200,300)" stroke="#B45309" stroke-width="2" fill="none" stroke-linecap="round">
+      <rect x="-9" y="-9" width="18" height="18" rx="2"/>
+      <rect x="-4" y="-4" width="8" height="8" rx="1"/>
+      <line x1="-4" y1="-14" x2="-4" y2="-9"/>
+      <line x1="4" y1="-14" x2="4" y2="-9"/>
+      <line x1="-4" y1="9" x2="-4" y2="14"/>
+      <line x1="4" y1="9" x2="4" y2="14"/>
+      <line x1="-14" y1="-4" x2="-9" y2="-4"/>
+      <line x1="-14" y1="4" x2="-9" y2="4"/>
+      <line x1="9" y1="-4" x2="14" y2="-4"/>
+      <line x1="9" y1="4" x2="14" y2="4"/>
+    </g>
+  </g>
+
+  <!-- A2 Pre-flight Readiness Report -->
+  <g>
+    <rect x="360" y="300" width="280" height="160" rx="14" fill="#FEF3C7" stroke="#B45309" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="500" y="338">Pre-flight Readiness Report</text>
+    <text class="sub" x="500" y="358">Unsupported ops · residual-prune</text>
+    <text class="sub" x="500" y="373">groups · calibration-set sizing</text>
+    <rect x="450" y="418" width="100" height="22" rx="11" fill="#B45309"/>
+    <text class="badgetxt" x="500" y="433">NEW</text>
+    <circle cx="500" cy="300" r="22" fill="#FFFFFF" stroke="#B45309" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(500,300)" stroke="#B45309" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-8" y="-11" width="16" height="22" rx="2"/>
+      <rect x="-4" y="-13" width="8" height="4" rx="1" fill="#B45309" stroke="none"/>
+      <line x1="-4" y1="-3" x2="4" y2="-3"/>
+      <line x1="-4" y1="1" x2="4" y2="1"/>
+      <line x1="-4" y1="5" x2="2" y2="5"/>
+    </g>
+  </g>
+
+  <!-- A3 Orchestration / Decision Layer -->
+  <g>
+    <rect x="660" y="300" width="280" height="160" rx="14" fill="url(#decisionGrad)" stroke="#4338CA" stroke-width="3" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="338">Orchestration / Decision Layer</text>
+    <text class="sub" x="800" y="358">Budget-driven search:</text>
+    <text class="sub" x="800" y="373">"latency&lt;50ms, accuracy_drop&lt;1%"</text>
+    <rect x="750" y="418" width="100" height="22" rx="11" fill="#4338CA"/>
+    <text class="badgetxt" x="800" y="433">CORE</text>
+    <circle cx="800" cy="300" r="24" fill="#FFFFFF" stroke="#4338CA" stroke-width="3.5" filter="url(#softShadow)"/>
+    <g transform="translate(800,300)" stroke="#4338CA" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <path d="M -11 6 A 11 11 0 0 1 11 6"/>
+      <line x1="0" y1="6" x2="7" y2="-5"/>
+      <circle cx="0" cy="6" r="2" fill="#4338CA" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- A4 Per-Layer Sensitivity Diagnosis -->
+  <g>
+    <rect x="960" y="300" width="280" height="160" rx="14" fill="#EDE9FE" stroke="#6D28D9" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1100" y="338">Sensitivity Diagnosis</text>
+    <text class="sub" x="1100" y="358">MSE + SQNR per layer, one-at-</text>
+    <text class="sub" x="1100" y="373">a-time toggle — blames a layer</text>
+    <rect x="1050" y="418" width="100" height="22" rx="11" fill="#6D28D9"/>
+    <text class="badgetxt" x="1100" y="433">NEW</text>
+    <circle cx="1100" cy="300" r="22" fill="#FFFFFF" stroke="#6D28D9" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1100,300)" stroke="#6D28D9" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <circle cx="-3" cy="-3" r="7"/>
+      <line x1="2" y1="2" x2="10" y2="10"/>
+    </g>
+  </g>
+
+  <!-- A5 Structural Reparameterization -->
+  <g>
+    <rect x="1260" y="300" width="280" height="160" rx="14" fill="#FCE7F3" stroke="#BE185D" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1400" y="338" font-size="14.5">Reparameterization</text>
+    <text class="sub" x="1400" y="358">RepVGG/MobileOne multi-branch</text>
+    <text class="sub" x="1400" y="373">→ algebraic fuse to single-branch</text>
+    <text class="sub" x="1400" y="391" font-style="italic">feeds Structured Pruning, opt-in</text>
+    <rect x="1320" y="418" width="160" height="22" rx="11" fill="#BE185D"/>
+    <text class="badgetxt" x="1400" y="433">INDEPENDENT TRACK</text>
+    <circle cx="1400" cy="300" r="22" fill="#FFFFFF" stroke="#BE185D" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1400,300)" stroke="#BE185D" stroke-width="2" fill="none" stroke-linecap="round">
+      <line x1="-9" y1="-9" x2="-2" y2="0"/>
+      <line x1="9" y1="-9" x2="2" y2="0"/>
+      <line x1="-2" y1="0" x2="-2" y2="10"/>
+      <line x1="2" y1="0" x2="2" y2="10"/>
+    </g>
+  </g>
+
+  <!-- ============ ROW B: PIPELINE STAGE MODULES ============ -->
+  <!-- B1 Structured Pruning -->
+  <g>
+    <rect x="60" y="490" width="280" height="160" rx="14" fill="#CCFBF1" stroke="#0F766E" stroke-width="2" stroke-dasharray="9,5" filter="url(#softShadow)"/>
+    <text class="label" x="200" y="528">Structured Pruning</text>
+    <text class="sub" x="200" y="548">SIMD-aligned channels (×8/16/32)</text>
+    <text class="sub" x="200" y="563">magnitude criterion, iterative</text>
+    <rect x="115" y="608" width="170" height="22" rx="11" fill="#0F766E"/>
+    <text class="badgetxt" x="200" y="623" font-size="9.5">WRAPS: Torch-Pruning</text>
+    <circle cx="200" cy="490" r="22" fill="#FFFFFF" stroke="#0F766E" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(200,490)" stroke="#0F766E" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <line x1="-9" y1="-9" x2="9" y2="9"/>
+      <line x1="9" y1="-9" x2="-9" y2="9"/>
+      <circle cx="-9" cy="9" r="3"/>
+      <circle cx="9" cy="9" r="3"/>
+    </g>
+  </g>
+
+  <!-- B2 Knowledge Distillation -->
+  <g>
+    <rect x="360" y="490" width="280" height="160" rx="14" fill="#E0F2FE" stroke="#0369A1" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="500" y="528">Knowledge Distillation</text>
+    <text class="sub" x="500" y="548">DKD logit loss · teacher =</text>
+    <text class="sub" x="500" y="563">original uncompressed model</text>
+    <rect x="425" y="608" width="150" height="22" rx="11" fill="#0369A1"/>
+    <text class="badgetxt" x="500" y="623">BUILT FRESH</text>
+    <circle cx="500" cy="490" r="22" fill="#FFFFFF" stroke="#0369A1" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(500,490)" stroke="#0369A1" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="0,-10 13,-3 0,4 -13,-3" fill="#0369A1" stroke="none"/>
+      <rect x="-6" y="-3" width="12" height="7" rx="1.5"/>
+      <line x1="9" y1="-3" x2="9" y2="6"/>
+      <circle cx="9" cy="8" r="1.6" fill="#0369A1" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- B3 Quantization -->
+  <g>
+    <rect x="660" y="490" width="280" height="160" rx="14" fill="#FFEDD5" stroke="#C2410C" stroke-width="2" stroke-dasharray="9,5" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="528">Quantization</text>
+    <text class="sub" x="800" y="548">ISA-gated: INT8 (VNNI) / FP16</text>
+    <text class="sub" x="800" y="563">PTQ first, QAT fallback</text>
+    <rect x="655" y="608" width="290" height="22" rx="11" fill="#C2410C"/>
+    <text class="badgetxt" x="800" y="623" font-size="9.5">WRAPS: ONNX Runtime + PT2E</text>
+    <circle cx="800" cy="490" r="22" fill="#FFFFFF" stroke="#C2410C" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(800,490)" stroke="#C2410C" stroke-width="1.6" fill="none">
+      <rect x="-10" y="-10" width="8" height="8" fill="#C2410C" stroke="none"/>
+      <rect x="2" y="-10" width="8" height="8"/>
+      <rect x="-10" y="2" width="8" height="8"/>
+      <rect x="2" y="2" width="8" height="8" fill="#C2410C" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- B4 Export & Packaging -->
+  <g>
+    <rect x="960" y="490" width="280" height="160" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" stroke-dasharray="9,5" filter="url(#softShadow)"/>
+    <text class="label" x="1100" y="528">Export &amp; Packaging</text>
+    <text class="sub" x="1100" y="548">PT2E → ONNX (opset ≥13)</text>
+    <text class="sub" x="1100" y="563">benchmarked on target CPU</text>
+    <rect x="1035" y="608" width="130" height="22" rx="11" fill="#334155"/>
+    <text class="badgetxt" x="1100" y="623">EXPORT</text>
+    <circle cx="1100" cy="490" r="22" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1100,490)" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-11" y="-6" width="22" height="16" rx="1.5"/>
+      <line x1="-11" y1="0" x2="11" y2="0"/>
+      <line x1="0" y1="-6" x2="0" y2="10"/>
+      <path d="M -4 -6 q 0 -6 4 -6 q 4 0 4 6"/>
+    </g>
+  </g>
+
+  <!-- B5 Reporting -->
+  <g>
+    <rect x="1260" y="490" width="280" height="160" rx="14" fill="#D1FAE5" stroke="#047857" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1400" y="528">Reporting</text>
+    <text class="sub" x="1400" y="548">Pareto scatter · sensitivity panel</text>
+    <text class="sub" x="1400" y="563">MLflow-compatible metrics</text>
+    <rect x="1325" y="608" width="150" height="22" rx="11" fill="#047857"/>
+    <text class="badgetxt" x="1400" y="623">BUILT FRESH</text>
+    <circle cx="1400" cy="490" r="22" fill="#FFFFFF" stroke="#047857" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1400,490)" stroke="#047857" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <line x1="-10" y1="9" x2="10" y2="9"/>
+      <line x1="-7" y1="9" x2="-7" y2="-2"/>
+      <line x1="0" y1="9" x2="0" y2="-8"/>
+      <line x1="7" y1="9" x2="7" y2="2"/>
+    </g>
+  </g>
+
+  <!-- row section tags: rotated in the empty left margin (x 40-60), so they never cross an icon -->
+  <text class="sectiontag" x="50" y="380" font-size="10" text-anchor="middle" transform="rotate(-90 50 380)">SUPPORT (ALWAYS-ON)</text>
+  <text class="sectiontag" x="50" y="570" font-size="10" text-anchor="middle" fill="#0F172A" transform="rotate(-90 50 570)">PIPELINE STAGES</text>
+  <!-- arrow labels (drawn after boxes so they stay legible on top of icons/gaps) -->
+  <rect x="410" y="453" width="185" height="16" fill="#F8FAFC"/>
+  <text class="arrlabel" x="500" y="465">orchestrates pipeline start</text>
+  <rect x="590" y="466" width="145" height="16" fill="#F8FAFC"/>
+  <text class="arrlabel" x="660" y="478">measure → diagnose</text>
+  <rect x="765" y="688" width="130" height="16" fill="#F8FAFC"/>
+  <text class="arrlabel" x="830" y="700">calibration data ↕</text>
+
+  <!-- ============ STORAGE (local artifact store, 3 boxes) ============ -->
+  <g>
+    <rect x="50" y="730" width="460" height="100" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="280" y="768">Model Artifacts</text>
+    <text class="sub" x="280" y="788">original + compressed .onnx/.pt files on local disk</text>
+    <circle cx="280" cy="730" r="20" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(280,730)" stroke="#334155" stroke-width="2" fill="none" stroke-linejoin="round">
+      <path d="M -11 -5 L -3 -5 L 0 -1 L 11 -1 L 11 7 L -11 7 Z"/>
+    </g>
+  </g>
+  <g>
+    <rect x="570" y="730" width="460" height="100" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="768">Calibration Datasets</text>
+    <text class="sub" x="800" y="788">representative samples used for PTQ, on local disk</text>
+    <circle cx="800" cy="730" r="20" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(800,730)" stroke="#334155" stroke-width="2" fill="none" stroke-linejoin="round">
+      <path d="M -11 -5 L -3 -5 L 0 -1 L 11 -1 L 11 7 L -11 7 Z"/>
+    </g>
+  </g>
+  <g>
+    <rect x="1090" y="730" width="460" height="100" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1320" y="768">Reports &amp; Metrics</text>
+    <text class="sub" x="1320" y="788">HTML report + MLflow-compatible run logs</text>
+    <circle cx="1320" cy="730" r="20" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1320,730)" stroke="#334155" stroke-width="2" fill="none" stroke-linejoin="round">
+      <path d="M -11 -5 L -3 -5 L 0 -1 L 11 -1 L 11 7 L -11 7 Z"/>
+    </g>
+  </g>
+
+  <!-- ============ CALLOUTS ============ -->
+  <g>
+    <rect x="80" y="870" width="680" height="140" rx="14" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" filter="url(#softShadow)"/>
+    <text class="label" x="420" y="900" font-size="16">Single Deployment</text>
+    <text class="legendtext" x="110" y="928">• One pip-installable package: <tspan font-family="monospace">pip install mctk</tspan></text>
+    <text class="legendtext" x="110" y="952">• No server process, no client-server split</text>
+    <text class="legendtext" x="110" y="976">• Runs entirely on the user's machine — CLI, notebook, or CI step</text>
+  </g>
+  <g>
+    <rect x="840" y="870" width="680" height="140" rx="14" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5" filter="url(#softShadow)"/>
+    <text class="label" x="1180" y="900" font-size="16">Module Boundaries</text>
+    <text class="legendtext" x="870" y="928">✓ Separated in code — one Python subpackage per module</text>
+    <text class="legendtext" x="870" y="952">✓ Communication is in-process function calls only, no network hops</text>
+    <text class="legendtext" x="870" y="976">✗ Not split into microservices — a single-machine run doesn't need one</text>
+  </g>
+
+  <!-- ============ LEGEND ============ -->
+  <g>
+    <rect x="80" y="1030" width="900" height="110" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+    <text class="legendtitle" x="100" y="1056">Legend</text>
+    <rect x="100" y="1068" width="26" height="14" rx="3" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="4,3"/>
+    <text class="legendtext" x="136" y="1080">Wraps an existing OSS library</text>
+    <rect x="360" y="1068" width="26" height="14" rx="3" fill="none" stroke="#334155" stroke-width="2"/>
+    <text class="legendtext" x="396" y="1080">Built fresh — our differentiator</text>
+    <g>
+      <circle cx="106" cy="1108" r="6" fill="#B45309"/>
+      <circle cx="128" cy="1108" r="6" fill="#4338CA"/>
+      <circle cx="150" cy="1108" r="6" fill="#6D28D9"/>
+      <circle cx="172" cy="1108" r="6" fill="#BE185D"/>
+      <circle cx="194" cy="1108" r="6" fill="#0F766E"/>
+      <circle cx="216" cy="1108" r="6" fill="#0369A1"/>
+      <circle cx="238" cy="1108" r="6" fill="#C2410C"/>
+      <circle cx="260" cy="1108" r="6" fill="#334155"/>
+      <circle cx="282" cy="1108" r="6" fill="#047857"/>
+    </g>
+    <text class="legendsmall" x="100" y="1128">Probe/Preflight · Orchestrate · Diagnose · Reparam · Prune · Distill · Quantize · Export · Report</text>
+  </g>
+
+  <text class="footer" x="1540" y="1180">Model Compression ToolKit — Software / Component Architecture, v1</text>
+</svg>

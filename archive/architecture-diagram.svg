@@ -1,0 +1,271 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1600 1260" width="1600" height="1260" font-family="'Segoe UI', 'Helvetica Neue', Arial, sans-serif">
+  <defs>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#475569"/>
+    </marker>
+    <marker id="arrowViolet" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#6D28D9"/>
+    </marker>
+    <filter id="softShadow" x="-30%" y="-30%" width="160%" height="160%">
+      <feDropShadow dx="0" dy="3" stdDeviation="4" flood-color="#0F172A" flood-opacity="0.14"/>
+    </filter>
+    <linearGradient id="decisionGrad" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0" stop-color="#E9E7FE"/>
+      <stop offset="1" stop-color="#DCD9FC"/>
+    </linearGradient>
+  </defs>
+
+  <style>
+    .title{font-size:30px;font-weight:700;fill:#0F172A;text-anchor:middle;}
+    .subtitle{font-size:15px;font-style:italic;fill:#475569;text-anchor:middle;}
+    .label{font-size:16.5px;font-weight:700;fill:#0F172A;text-anchor:middle;}
+    .sub{font-size:12px;fill:#334155;text-anchor:middle;}
+    .stagetag{font-size:11px;font-weight:700;fill:#0F172A;text-anchor:middle;letter-spacing:0.5px;}
+    .badgetxt{font-size:10.5px;font-weight:700;fill:#FFFFFF;text-anchor:middle;}
+    .arrlabel{font-size:11.5px;font-style:italic;fill:#334155;text-anchor:middle;}
+    .legendtitle{font-size:14px;font-weight:700;fill:#0F172A;}
+    .legendtext{font-size:12px;fill:#334155;}
+    .legendsmall{font-size:10px;fill:#475569;}
+    .footer{font-size:10.5px;fill:#94A3B8;text-anchor:end;}
+  </style>
+
+  <rect x="0" y="0" width="1600" height="1260" fill="#F8FAFC"/>
+
+  <text class="title" x="800" y="55">Model Compression ToolKit — System Architecture</text>
+  <text class="subtitle" x="800" y="82">Prune → Distill → Quantize, gated by a CPU-latency-aware orchestration layer</text>
+
+  <!-- ============ CONNECTORS (drawn first, under nodes) ============ -->
+  <g stroke="#64748B" stroke-width="2.5" fill="none">
+    <path d="M800,200 L800,222 L430,222 L430,245" marker-end="url(#arrow)"/>
+    <path d="M800,200 L800,222 L1170,222 L1170,245" marker-end="url(#arrow)"/>
+    <path d="M430,365 L430,400 L800,400 L800,430" marker-end="url(#arrow)"/>
+    <path d="M1170,365 L1170,400 L800,400 L800,430" marker-end="url(#arrow)"/>
+    <path d="M800,560 L800,650 L300,650 L300,700" marker-end="url(#arrow)"/>
+    <path d="M800,560 L800,650 L750,650 L750,700" marker-end="url(#arrow)"/>
+    <path d="M800,560 L800,650 L1200,650 L1200,700" marker-end="url(#arrow)"/>
+    <path d="M490,785 L560,785" marker-end="url(#arrow)"/>
+    <path d="M940,785 L1010,785" marker-end="url(#arrow)"/>
+    <path d="M1200,870 L1200,900 L800,900 L800,930" marker-end="url(#arrow)"/>
+    <path d="M800,1040 L800,1065 L500,1065 L500,1090" marker-end="url(#arrow)"/>
+    <path d="M800,1040 L800,1065 L920,1065 L920,1090" marker-end="url(#arrow)"/>
+  </g>
+  <g stroke="#6D28D9" stroke-width="2.25" fill="none" stroke-dasharray="6,4">
+    <path d="M1390,785 L1480,785 L1480,665 L1450,665" marker-end="url(#arrowViolet)"/>
+    <path d="M1150,665 C1090,665 1090,495 1070,495" marker-end="url(#arrowViolet)"/>
+  </g>
+  <text class="arrlabel" x="1500" y="730" transform="rotate(-90 1500,730)">measure</text>
+  <text class="arrlabel" x="1115" y="575">decide</text>
+
+  <!-- ============ INPUT ============ -->
+  <g>
+    <rect x="700" y="110" width="200" height="90" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="155">Trained CNN</text>
+    <text class="sub" x="800" y="178">(PyTorch model)</text>
+    <circle cx="800" cy="110" r="25" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(800,110)" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round">
+      <line x1="-9" y1="7" x2="9" y2="7"/>
+      <line x1="-9" y1="7" x2="0" y2="-9"/>
+      <line x1="9" y1="7" x2="0" y2="-9"/>
+      <circle cx="-9" cy="7" r="3" fill="#334155" stroke="none"/>
+      <circle cx="9" cy="7" r="3" fill="#334155" stroke="none"/>
+      <circle cx="0" cy="-9" r="3" fill="#334155" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- ============ CPU CAPABILITY PROBE ============ -->
+  <g>
+    <rect x="260" y="245" width="340" height="120" rx="14" fill="#FEF3C7" stroke="#B45309" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="430" y="290">CPU Capability Probe</text>
+    <text class="sub" x="430" y="311">detects VNNI / AVX2 / AVX-512 /</text>
+    <text class="sub" x="430" y="326">ARM NEON-dotprod via CPUID</text>
+    <text class="sub" x="430" y="341">→ gates INT8 vs FP16 choice</text>
+    <rect x="520" y="341" width="70" height="24" rx="12" fill="#B45309"/>
+    <text class="badgetxt" x="555" y="357">NEW</text>
+    <circle cx="430" cy="245" r="25" fill="#FFFFFF" stroke="#B45309" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(430,245)" stroke="#B45309" stroke-width="2" fill="none" stroke-linecap="round">
+      <rect x="-9" y="-9" width="18" height="18" rx="2"/>
+      <rect x="-4" y="-4" width="8" height="8" rx="1"/>
+      <line x1="-4" y1="-14" x2="-4" y2="-9"/>
+      <line x1="4" y1="-14" x2="4" y2="-9"/>
+      <line x1="-4" y1="9" x2="-4" y2="14"/>
+      <line x1="4" y1="9" x2="4" y2="14"/>
+      <line x1="-14" y1="-4" x2="-9" y2="-4"/>
+      <line x1="-14" y1="4" x2="-9" y2="4"/>
+      <line x1="9" y1="-4" x2="14" y2="-4"/>
+      <line x1="9" y1="4" x2="14" y2="4"/>
+    </g>
+  </g>
+
+  <!-- ============ PRE-FLIGHT READINESS REPORT ============ -->
+  <g>
+    <rect x="1000" y="245" width="340" height="120" rx="14" fill="#FEF3C7" stroke="#B45309" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1170" y="290">Pre-flight Readiness Report</text>
+    <text class="sub" x="1170" y="311">unsupported ops · residual-prune</text>
+    <text class="sub" x="1170" y="326">groups · calibration-set sizing</text>
+    <text class="sub" x="1170" y="341">— loud warnings before compute</text>
+    <rect x="1260" y="341" width="70" height="24" rx="12" fill="#B45309"/>
+    <text class="badgetxt" x="1295" y="357">NEW</text>
+    <circle cx="1170" cy="245" r="25" fill="#FFFFFF" stroke="#B45309" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1170,245)" stroke="#B45309" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-8" y="-11" width="16" height="22" rx="2"/>
+      <rect x="-4" y="-13" width="8" height="4" rx="1" fill="#B45309" stroke="none"/>
+      <line x1="-4" y1="-3" x2="4" y2="-3"/>
+      <line x1="-4" y1="1" x2="4" y2="1"/>
+      <line x1="-4" y1="5" x2="2" y2="5"/>
+    </g>
+  </g>
+
+  <!-- ============ ORCHESTRATION / DECISION LAYER ============ -->
+  <g>
+    <rect x="530" y="430" width="540" height="130" rx="16" fill="url(#decisionGrad)" stroke="#4338CA" stroke-width="3.5" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="478" font-size="18">Orchestration / Decision Layer</text>
+    <text class="sub" x="800" y="500">budget-driven search: "latency &lt; 50ms, accuracy drop &lt; 1%"</text>
+    <text class="sub" x="800" y="516">Efficiency Score ranking · stops as soon as budget is met</text>
+    <rect x="984" y="522" width="76" height="26" rx="13" fill="#4338CA"/>
+    <text class="badgetxt" x="1022" y="539" font-size="11">CORE</text>
+    <circle cx="800" cy="430" r="27" fill="#FFFFFF" stroke="#4338CA" stroke-width="3.5" filter="url(#softShadow)"/>
+    <g transform="translate(800,430)" stroke="#4338CA" stroke-width="2.4" fill="none" stroke-linecap="round">
+      <path d="M -11 6 A 11 11 0 0 1 11 6"/>
+      <line x1="0" y1="6" x2="7" y2="-5"/>
+      <circle cx="0" cy="6" r="2" fill="#4338CA" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- ============ PER-LAYER SENSITIVITY DIAGNOSIS ============ -->
+  <g>
+    <rect x="1150" y="610" width="300" height="110" rx="14" fill="#EDE9FE" stroke="#6D28D9" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="1300" y="653" font-size="15">Per-Layer Sensitivity Diagnosis</text>
+    <text class="sub" x="1300" y="674">MSE + SQNR per layer (toggle one</text>
+    <text class="sub" x="1300" y="689">layer at a time) → which layer to blame</text>
+    <rect x="1224" y="694" width="70" height="24" rx="12" fill="#6D28D9"/>
+    <text class="badgetxt" x="1259" y="710">NEW</text>
+    <circle cx="1300" cy="610" r="25" fill="#FFFFFF" stroke="#6D28D9" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1300,610)" stroke="#6D28D9" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <circle cx="-3" cy="-3" r="7"/>
+      <line x1="2" y1="2" x2="10" y2="10"/>
+    </g>
+  </g>
+
+  <!-- ============ STAGE 1: STRUCTURED PRUNING ============ -->
+  <g>
+    <rect x="110" y="700" width="380" height="170" rx="14" fill="#CCFBF1" stroke="#0F766E" stroke-width="2" stroke-dasharray="9,5" filter="url(#softShadow)"/>
+    <text class="stagetag" x="300" y="726" fill="#0F766E">STAGE 1</text>
+    <text class="label" x="300" y="748">Structured Pruning</text>
+    <text class="sub" x="300" y="770">wraps Torch-Pruning (DepGraph)</text>
+    <text class="sub" x="300" y="786">SIMD-aligned channels (×8/16/32)</text>
+    <text class="sub" x="300" y="802">magnitude criterion, iterative steps</text>
+    <rect x="324" y="836" width="146" height="24" rx="12" fill="#0F766E"/>
+    <text class="badgetxt" x="397" y="852" font-size="10">WRAPS: Torch-Pruning</text>
+    <circle cx="300" cy="700" r="25" fill="#FFFFFF" stroke="#0F766E" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(300,700)" stroke="#0F766E" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <line x1="-9" y1="-9" x2="9" y2="9"/>
+      <line x1="9" y1="-9" x2="-9" y2="9"/>
+      <circle cx="-9" cy="9" r="3"/>
+      <circle cx="9" cy="9" r="3"/>
+    </g>
+  </g>
+
+  <!-- ============ STAGE 2: KNOWLEDGE DISTILLATION ============ -->
+  <g>
+    <rect x="560" y="700" width="380" height="170" rx="14" fill="#E0F2FE" stroke="#0369A1" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="stagetag" x="750" y="726" fill="#0369A1">STAGE 2</text>
+    <text class="label" x="750" y="748">Knowledge Distillation</text>
+    <text class="sub" x="750" y="770">DKD (decoupled) logit loss</text>
+    <text class="sub" x="750" y="786">teacher = original uncompressed</text>
+    <text class="sub" x="750" y="802">model — no separate teacher (CAKD)</text>
+    <rect x="674" y="836" width="152" height="24" rx="12" fill="#0369A1"/>
+    <text class="badgetxt" x="750" y="852" font-size="10">BUILT FRESH</text>
+    <circle cx="750" cy="700" r="25" fill="#FFFFFF" stroke="#0369A1" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(750,700)" stroke="#0369A1" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="0,-10 13,-3 0,4 -13,-3" fill="#0369A1" stroke="none"/>
+      <rect x="-6" y="-3" width="12" height="7" rx="1.5"/>
+      <line x1="9" y1="-3" x2="9" y2="6"/>
+      <circle cx="9" cy="8" r="1.6" fill="#0369A1" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- ============ STAGE 3: QUANTIZATION ============ -->
+  <g>
+    <rect x="1010" y="700" width="380" height="170" rx="14" fill="#FFEDD5" stroke="#C2410C" stroke-width="2" stroke-dasharray="9,5" filter="url(#softShadow)"/>
+    <text class="stagetag" x="1200" y="726" fill="#C2410C">STAGE 3</text>
+    <text class="label" x="1200" y="748">Quantization</text>
+    <text class="sub" x="1200" y="770">PT2E → ONNX Runtime export</text>
+    <text class="sub" x="1200" y="786">ISA-gated: INT8 (VNNI) / FP16 (else)</text>
+    <text class="sub" x="1200" y="802">PTQ first, QAT fallback if needed</text>
+    <rect x="1090" y="836" width="220" height="24" rx="12" fill="#C2410C"/>
+    <text class="badgetxt" x="1200" y="852" font-size="10">WRAPS: ONNX Runtime + PT2E</text>
+    <circle cx="1200" cy="700" r="25" fill="#FFFFFF" stroke="#C2410C" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(1200,700)" stroke="#C2410C" stroke-width="1.6" fill="none">
+      <rect x="-10" y="-10" width="8" height="8" fill="#C2410C" stroke="none"/>
+      <rect x="2" y="-10" width="8" height="8"/>
+      <rect x="-10" y="2" width="8" height="8"/>
+      <rect x="2" y="2" width="8" height="8" fill="#C2410C" stroke="none"/>
+    </g>
+  </g>
+
+  <!-- ============ EXPORT ============ -->
+  <g>
+    <rect x="610" y="930" width="380" height="110" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="800" y="975">Optimized Model Export</text>
+    <text class="sub" x="800" y="996">ONNX INT8 / FP16 — benchmarked on</text>
+    <text class="sub" x="800" y="1011">the actual target CPU, never FLOP-estimated</text>
+    <circle cx="800" cy="930" r="25" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(800,930)" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-11" y="-6" width="22" height="16" rx="1.5"/>
+      <line x1="-11" y1="0" x2="11" y2="0"/>
+      <line x1="0" y1="-6" x2="0" y2="10"/>
+      <path d="M -4 -6 q 0 -6 4 -6 q 4 0 4 6"/>
+    </g>
+  </g>
+
+  <!-- ============ OUTPUT: CPU INFERENCE ============ -->
+  <g>
+    <rect x="350" y="1090" width="300" height="100" rx="14" fill="#F1F5F9" stroke="#334155" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="500" y="1132" font-size="15">Runs on Low-End PC</text>
+    <text class="sub" x="500" y="1153">measured latency &amp; RAM on the</text>
+    <text class="sub" x="500" y="1168">real target hardware</text>
+    <circle cx="500" cy="1090" r="24" fill="#FFFFFF" stroke="#334155" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(500,1090)" stroke="#334155" stroke-width="2" fill="none" stroke-linecap="round" stroke-linejoin="round">
+      <rect x="-10" y="-9" width="20" height="13" rx="1.5"/>
+      <path d="M -14 7 L 14 7 L 11 11 L -11 11 Z"/>
+    </g>
+  </g>
+
+  <!-- ============ OUTPUT: HTML REPORT ============ -->
+  <g>
+    <rect x="750" y="1090" width="340" height="100" rx="14" fill="#D1FAE5" stroke="#047857" stroke-width="2" filter="url(#softShadow)"/>
+    <text class="label" x="920" y="1132" font-size="15">HTML Report</text>
+    <text class="sub" x="920" y="1153">Pareto scatter · sensitivity panel ·</text>
+    <text class="sub" x="920" y="1168">model lineage (MLflow-compatible)</text>
+    <circle cx="920" cy="1090" r="24" fill="#FFFFFF" stroke="#047857" stroke-width="3" filter="url(#softShadow)"/>
+    <g transform="translate(920,1090)" stroke="#047857" stroke-width="2.2" fill="none" stroke-linecap="round">
+      <line x1="-10" y1="9" x2="10" y2="9"/>
+      <line x1="-7" y1="9" x2="-7" y2="-2"/>
+      <line x1="0" y1="9" x2="0" y2="-8"/>
+      <line x1="7" y1="9" x2="7" y2="2"/>
+    </g>
+  </g>
+
+  <!-- ============ LEGEND ============ -->
+  <g>
+    <rect x="60" y="1090" width="430" height="140" rx="12" fill="#FFFFFF" stroke="#CBD5E1" stroke-width="1.5"/>
+    <text class="legendtitle" x="80" y="1116">Legend</text>
+    <rect x="80" y="1128" width="26" height="14" rx="3" fill="none" stroke="#334155" stroke-width="2" stroke-dasharray="4,3"/>
+    <text class="legendtext" x="116" y="1140">Wraps an existing OSS library</text>
+    <rect x="80" y="1152" width="26" height="14" rx="3" fill="none" stroke="#334155" stroke-width="2"/>
+    <text class="legendtext" x="116" y="1164">Built fresh — our differentiator</text>
+    <g>
+      <circle cx="86" cy="1188" r="6" fill="#B45309"/>
+      <circle cx="108" cy="1188" r="6" fill="#4338CA"/>
+      <circle cx="130" cy="1188" r="6" fill="#6D28D9"/>
+      <circle cx="152" cy="1188" r="6" fill="#0F766E"/>
+      <circle cx="174" cy="1188" r="6" fill="#0369A1"/>
+      <circle cx="196" cy="1188" r="6" fill="#C2410C"/>
+      <circle cx="218" cy="1188" r="6" fill="#047857"/>
+    </g>
+    <text class="legendsmall" x="80" y="1208">Detection · Orchestration · Diagnosis · Prune ·</text>
+    <text class="legendsmall" x="80" y="1221">Distill · Quantize · Report</text>
+  </g>
+
+  <text class="footer" x="1540" y="1248">Model Compression ToolKit — CPU-first architecture, v1</text>
+</svg>
