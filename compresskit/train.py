@@ -18,9 +18,9 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .core.benchmark import accuracy_torch
+from .core.host import training_device
 from .distill import cosine_lr
-from .host import training_device
-from .benchmark import accuracy_torch
 
 
 @dataclass

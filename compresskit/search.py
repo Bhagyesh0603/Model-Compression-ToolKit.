@@ -23,8 +23,8 @@ from pathlib import Path
 
 import torch.nn as nn
 
-from . import host as host_mod
-from .benchmark import Measurement, efficiency_score, measure
+from .core import host as host_mod
+from .core.benchmark import Measurement, efficiency_score, measure
 from .pipeline import Pipeline, PipelineResult
 from .sensitivity import SensitivityReport, analyze
 

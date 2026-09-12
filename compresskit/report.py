@@ -21,7 +21,7 @@ import matplotlib
 matplotlib.use("Agg")
 import matplotlib.pyplot as plt  # noqa: E402
 
-from .benchmark import Measurement, efficiency_score  # noqa: E402
+from .core.benchmark import Measurement, efficiency_score  # noqa: E402
 
 SLATE = "#334155"
 MUTED = "#94A3B8"

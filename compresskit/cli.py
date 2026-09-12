@@ -42,15 +42,15 @@ def _load_model(args):
 
 
 def cmd_probe(args) -> int:
-    from .host import probe
+    from .core.host import probe
 
     print(probe().describe())
     return 0
 
 
 def cmd_bench(args) -> int:
-    from .benchmark import benchmark
-    from .export import size_mb
+    from .core.benchmark import benchmark
+    from .core.export import size_mb
 
     latency = benchmark(args.artifact, tuple(args.input_shape), warmup=args.warmup, runs=args.runs)
     print(f"{args.artifact}  {size_mb(args.artifact):.2f} MB")
@@ -62,7 +62,7 @@ def cmd_bench(args) -> int:
 
 
 def cmd_train(args) -> int:
-    from .benchmark import accuracy_torch
+    from .core.benchmark import accuracy_torch
     from .data import test_loader, train_loader
     from .models import build
     from .train import TrainConfig, save_model, train

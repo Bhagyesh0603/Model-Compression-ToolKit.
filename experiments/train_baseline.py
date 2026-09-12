@@ -19,9 +19,9 @@ from pathlib import Path
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
-from compresskit.benchmark import accuracy_torch  # noqa: E402
+from compresskit.core.benchmark import accuracy_torch  # noqa: E402
+from compresskit.core.host import probe  # noqa: E402
 from compresskit.data import test_loader, train_loader  # noqa: E402
-from compresskit.host import probe  # noqa: E402
 from compresskit.models import ARCHITECTURES, build  # noqa: E402
 from compresskit.train import TrainConfig, save_model, train  # noqa: E402
 

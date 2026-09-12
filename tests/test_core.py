@@ -4,10 +4,10 @@ import pytest
 import torch
 import torch.nn as nn
 
+from compresskit.core.benchmark import Latency, Measurement, benchmark, compression_score, efficiency_score
+from compresskit.core.export import layer_node_map, to_onnx, torch_name_from_onnx_node
+from compresskit.core.host import probe
 from compresskit.distill import DistillConfig, cosine_lr, dkd_loss, kd_loss
-from compresskit.export import layer_node_map, to_onnx, torch_name_from_onnx_node
-from compresskit.host import probe
-from compresskit.benchmark import Latency, Measurement, benchmark, compression_score, efficiency_score
 from compresskit.models import ARCHITECTURES, build
 from compresskit.prune import PruneConfig, classifier_layers, prune
 from compresskit.recover import recalibrate_bn
@@ -477,7 +477,7 @@ class TestSensitivity:
 class TestExportAndMeasure:
     def test_export_supports_dynamic_batch(self, model, tmp_path):
         """One artifact must serve both batch-1 latency and batched accuracy."""
-        from compresskit.benchmark import make_session
+        from compresskit.core.benchmark import make_session
         import numpy as np
 
         path = to_onnx(model, tmp_path / "m.onnx")

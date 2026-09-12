@@ -19,8 +19,8 @@ from pathlib import Path
 warnings.filterwarnings("ignore")
 sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
+from compresskit.core.host import probe  # noqa: E402
 from compresskit.har import calibration_loader, test_loader, train_loader  # noqa: E402
-from compresskit.host import probe  # noqa: E402
 from compresskit.pipeline import Pipeline  # noqa: E402
 from compresskit.report import render  # noqa: E402
 from compresskit.sensitivity import analyze  # noqa: E402

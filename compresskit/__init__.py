@@ -13,10 +13,19 @@ pruning and fine-tuning.
     ck.Pipeline(model, calib, test).prune(0.5).recover().quantize().run()
 """
 
-from .benchmark import Latency, Measurement, benchmark, compression_score, efficiency_score, measure
+from .core import (
+    HostContext,
+    Latency,
+    Measurement,
+    benchmark,
+    compression_score,
+    count_parameters,
+    efficiency_score,
+    measure,
+    probe,
+    to_onnx,
+)
 from .distill import DistillConfig, dkd_loss, distill, kd_loss
-from .export import count_parameters, to_onnx
-from .host import HostContext, probe
 from .pipeline import Pipeline, PipelineResult
 from .prune import PruneConfig, StructuredPruner, prune
 from .quantize import QuantConfig, quantize

@@ -3,9 +3,9 @@
 import pytest
 import torch
 
-from compresskit import host as host_mod
-from compresskit.export import to_onnx
-from compresskit.host import HostContext
+from compresskit.core import host as host_mod
+from compresskit.core.export import to_onnx
+from compresskit.core.host import HostContext
 from compresskit.pipeline import Pipeline
 from compresskit.quantize import QuantConfig, quantize
 from compresskit.report import render
@@ -54,7 +54,7 @@ class TestQuantize:
         node still consumes the previous pair's DequantizeLinear, so an
         input-side-only check would count it as quantized and hide the fact that
         the file shrank without that op getting any faster."""
-        from compresskit.export import layer_node_map
+        from compresskit.core.export import layer_node_map
 
         source = to_onnx(model, tmp_path / "fp32.onnx")
         excluded = layer_node_map(source)["features.3"]
