@@ -22,9 +22,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from compresskit.core.benchmark import accuracy_torch  # noqa: E402
 from compresskit.core.host import probe  # noqa: E402
-from compresskit.data import test_loader  # noqa: E402
-from compresskit.models import ARCHITECTURES, build  # noqa: E402
-from compresskit.train import save_model  # noqa: E402
+from compresskit.zoo.data import test_loader  # noqa: E402
+from compresskit.zoo.models import ARCHITECTURES, build  # noqa: E402
+from compresskit.zoo.train import save_model  # noqa: E402
 
 import torch  # noqa: E402
 

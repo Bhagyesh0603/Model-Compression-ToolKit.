@@ -28,8 +28,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from compresskit.core.benchmark import accuracy_torch  # noqa: E402
 from compresskit.core.host import probe  # noqa: E402
-from compresskit.har import build_har_resnet18, class_names, test_loader  # noqa: E402
-from compresskit.train import save_model  # noqa: E402
+from compresskit.zoo.har import build_har_resnet18, class_names, test_loader  # noqa: E402
+from compresskit.zoo.train import save_model  # noqa: E402
 
 import torch  # noqa: E402
 

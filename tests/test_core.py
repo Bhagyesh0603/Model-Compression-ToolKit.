@@ -8,7 +8,7 @@ from compresskit.core.benchmark import Latency, Measurement, benchmark, compress
 from compresskit.core.export import layer_node_map, to_onnx, torch_name_from_onnx_node
 from compresskit.core.host import probe
 from compresskit.distillation import DistillConfig, cosine_lr, dkd_loss, kd_loss
-from compresskit.models import ARCHITECTURES, build
+from compresskit.zoo.models import ARCHITECTURES, build
 from compresskit.pruning import PruneConfig, classifier_layers, prune, recalibrate_bn
 from compresskit.search import Budget
 from compresskit.sensitivity import analyze, fake_quantize

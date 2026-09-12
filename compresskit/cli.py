@@ -19,7 +19,7 @@ warnings.filterwarnings("ignore", category=UserWarning)
 
 
 def _loaders(args):
-    from .data import calibration_loader, test_loader, train_loader
+    from .zoo.data import calibration_loader, test_loader, train_loader
 
     return (
         calibration_loader(n=args.calib, batch_size=64),
@@ -29,8 +29,8 @@ def _loaders(args):
 
 
 def _load_model(args):
-    from .models import build
-    from .train import load_model
+    from .zoo.models import build
+    from .zoo.train import load_model
 
     if args.model:
         model, meta = load_model(args.model)
@@ -63,9 +63,9 @@ def cmd_bench(args) -> int:
 
 def cmd_train(args) -> int:
     from .core.benchmark import accuracy_torch
-    from .data import test_loader, train_loader
-    from .models import build
-    from .train import TrainConfig, save_model, train
+    from .zoo.data import test_loader, train_loader
+    from .zoo.models import build
+    from .zoo.train import TrainConfig, save_model, train
 
     tl, vl = train_loader(batch_size=args.batch_size), test_loader(batch_size=256)
     model = build(args.arch)
@@ -84,8 +84,8 @@ def cmd_train(args) -> int:
 
 
 def cmd_sensitivity(args) -> int:
-    from .data import calibration_loader
     from .sensitivity import analyze
+    from .zoo.data import calibration_loader
 
     model = _load_model(args)
     report = analyze(model, calibration_loader(n=args.calib, batch_size=64), batches=args.batches)

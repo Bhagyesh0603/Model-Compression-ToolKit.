@@ -21,9 +21,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 
 from compresskit.core.benchmark import accuracy_torch  # noqa: E402
 from compresskit.core.host import probe  # noqa: E402
-from compresskit.data import test_loader, train_loader  # noqa: E402
-from compresskit.models import ARCHITECTURES, build  # noqa: E402
-from compresskit.train import TrainConfig, save_model, train  # noqa: E402
+from compresskit.zoo.data import test_loader, train_loader  # noqa: E402
+from compresskit.zoo.models import ARCHITECTURES, build  # noqa: E402
+from compresskit.zoo.train import TrainConfig, save_model, train  # noqa: E402
 
 
 def main(argv=None) -> int:
