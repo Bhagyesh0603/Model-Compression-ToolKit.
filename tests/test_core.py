@@ -7,7 +7,7 @@ import torch.nn as nn
 from compresskit.core.benchmark import Latency, Measurement, benchmark, compression_score, efficiency_score
 from compresskit.core.export import layer_node_map, to_onnx, torch_name_from_onnx_node
 from compresskit.core.host import probe
-from compresskit.distill import DistillConfig, cosine_lr, dkd_loss, kd_loss
+from compresskit.distillation import DistillConfig, cosine_lr, dkd_loss, kd_loss
 from compresskit.models import ARCHITECTURES, build
 from compresskit.pruning import PruneConfig, classifier_layers, prune, recalibrate_bn
 from compresskit.search import Budget

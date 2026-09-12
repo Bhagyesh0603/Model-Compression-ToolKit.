@@ -25,7 +25,7 @@ from .core import (
     probe,
     to_onnx,
 )
-from .distill import DistillConfig, dkd_loss, distill, kd_loss
+from .distillation import DistillConfig, dkd_loss, distill, kd_loss
 from .pipeline import Pipeline, PipelineResult
 from .pruning import PruneConfig, StructuredPruner, prune, recalibrate_bn
 from .quantization import QuantConfig, quantize

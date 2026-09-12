@@ -20,7 +20,7 @@ import torch.nn.functional as F
 
 from .core.benchmark import accuracy_torch
 from .core.host import training_device
-from .distill import cosine_lr
+from .distillation import cosine_lr
 
 
 @dataclass

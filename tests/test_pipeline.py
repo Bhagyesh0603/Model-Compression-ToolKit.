@@ -127,7 +127,7 @@ class TestFullRun:
         would make it silently untrainable afterwards."""
         import copy
 
-        from compresskit.distill import DistillConfig, distill
+        from compresskit.distillation import DistillConfig, distill
 
         teacher = model
         student = copy.deepcopy(model)
