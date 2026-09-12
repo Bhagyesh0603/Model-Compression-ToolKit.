@@ -24,7 +24,7 @@ from .core.benchmark import Measurement, compression_score, efficiency_score, me
 from .core.export import count_parameters, to_onnx
 from .distill import DistillConfig, distill
 from .pruning import PruneConfig, StructuredPruner, classifier_layers, recalibrate_bn
-from .quantize import QuantConfig, QuantResult, quantize
+from .quantization import QuantConfig, QuantResult, quantize
 
 
 @dataclass

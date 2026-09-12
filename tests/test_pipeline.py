@@ -7,7 +7,7 @@ from compresskit.core import host as host_mod
 from compresskit.core.export import to_onnx
 from compresskit.core.host import HostContext
 from compresskit.pipeline import Pipeline
-from compresskit.quantize import QuantConfig, quantize
+from compresskit.quantization import QuantConfig, quantize
 from compresskit.report import render
 
 

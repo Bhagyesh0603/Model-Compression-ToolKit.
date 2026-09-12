@@ -27,8 +27,8 @@ from onnxruntime.quantization import (
 )
 from onnxruntime.quantization.shape_inference import quant_pre_process
 
-from .core import host as host_mod
-from .core.export import size_mb
+from ..core import host as host_mod
+from ..core.export import size_mb
 
 CALIBRATION_METHODS = {
     "minmax": CalibrationMethod.MinMax,
