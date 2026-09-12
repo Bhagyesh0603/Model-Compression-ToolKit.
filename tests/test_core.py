@@ -9,8 +9,7 @@ from compresskit.core.export import layer_node_map, to_onnx, torch_name_from_onn
 from compresskit.core.host import probe
 from compresskit.distill import DistillConfig, cosine_lr, dkd_loss, kd_loss
 from compresskit.models import ARCHITECTURES, build
-from compresskit.prune import PruneConfig, classifier_layers, prune
-from compresskit.recover import recalibrate_bn
+from compresskit.pruning import PruneConfig, classifier_layers, prune, recalibrate_bn
 from compresskit.search import Budget
 from compresskit.sensitivity import analyze, fake_quantize
 

@@ -23,9 +23,8 @@ from .core import host as host_mod
 from .core.benchmark import Measurement, compression_score, efficiency_score, measure
 from .core.export import count_parameters, to_onnx
 from .distill import DistillConfig, distill
-from .prune import PruneConfig, StructuredPruner, classifier_layers
+from .pruning import PruneConfig, StructuredPruner, classifier_layers, recalibrate_bn
 from .quantize import QuantConfig, QuantResult, quantize
-from .recover import recalibrate_bn
 
 
 @dataclass

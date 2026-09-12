@@ -27,9 +27,8 @@ from .core import (
 )
 from .distill import DistillConfig, dkd_loss, distill, kd_loss
 from .pipeline import Pipeline, PipelineResult
-from .prune import PruneConfig, StructuredPruner, prune
+from .pruning import PruneConfig, StructuredPruner, prune, recalibrate_bn
 from .quantize import QuantConfig, quantize
-from .recover import recalibrate_bn
 from .search import Budget, SearchResult, compress
 from .sensitivity import SensitivityReport, analyze
 
