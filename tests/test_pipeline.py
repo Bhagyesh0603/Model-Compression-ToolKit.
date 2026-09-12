@@ -9,6 +9,7 @@ from compresskit.core.host import HostContext
 from compresskit.pipeline import Pipeline
 from compresskit.quantization import QuantConfig, quantize
 from compresskit.report import render
+from compresskit.zoo.models import build
 
 
 @pytest.fixture
@@ -89,6 +90,36 @@ class TestQuantize:
         result = quantize(to_onnx(model, tmp_path / "fp32.onnx"), tmp_path / "auto.onnx", loader,
                           QuantConfig(precision="auto"))
         assert result.precision == "fp16"
+
+    def test_excluding_a_residual_add_fed_conv_actually_works(self, loader, tmp_path):
+        """The shared `model` fixture (TinyCNN) has no residual connections,
+        so it can never exercise this: ONNX Runtime's quantizer decides
+        whether to quantize a Conv's output based on what its *consumer*
+        needs, and a residual Add still wants quantized inputs — naming just
+        the Conv in exclude_nodes used to be silently ignored."""
+        net = build("resnet20")
+        source = to_onnx(net, tmp_path / "fp32.onnx", (1, 3, 32, 32))
+        excluded = "/layer3/layer3.2/conv2/Conv"
+
+        result = quantize(source, tmp_path / "int8.onnx", loader,
+                          QuantConfig(exclude_nodes=[excluded]))
+
+        assert result.unquantized_ops == {"Conv": 1}, "the excluded conv should stay float32"
+        assert result.coverage < 1.0
+        assert any("residual Add" in w for w in result.warnings)
+
+    def test_excluding_one_branch_does_not_collaterally_protect_its_sibling(self, loader, tmp_path):
+        """A block-0 residual Add has two Conv inputs (the main path and its
+        downsample shortcut). Excluding only the main path's conv must not
+        leave the downsample conv unquantized too as a side effect of also
+        excluding the shared Add."""
+        net = build("resnet20")
+        source = to_onnx(net, tmp_path / "fp32.onnx", (1, 3, 32, 32))
+
+        result = quantize(source, tmp_path / "int8.onnx", loader,
+                          QuantConfig(exclude_nodes=["/layer2/layer2.0/conv2/Conv"]))
+
+        assert result.unquantized_ops == {"Conv": 1}, "only the requested conv should stay float32"
 
 
 class TestFullRun:

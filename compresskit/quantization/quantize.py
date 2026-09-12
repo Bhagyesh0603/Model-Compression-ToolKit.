@@ -190,19 +190,69 @@ def to_fp16(src: Path, dst: Path) -> Path:
     return dst
 
 
+def _expand_exclusions_across_residual_adds(
+    graph_path: Path, exclude_nodes: list[str]
+) -> tuple[list[str], list[str]]:
+    """Extend a node exclusion to cover any residual `Add` it directly feeds.
+
+    ONNX Runtime's static QDQ quantizer decides whether to insert
+    quantize/dequantize pairs around a node's output based on what its
+    *consumer* needs, not just whether that node itself is named in
+    `nodes_to_exclude` — a residual `Add` still wants quantized inputs, so
+    excluding only the Conv feeding it is silently ignored; the node gets
+    quantized anyway. Excluding the Add too fixes it, with no effect on the
+    Add's other input (e.g. a sibling downsample branch stays quantized
+    normally, not swept up as a side effect).
+
+    Single-hop only: none of this project's architectures feed one residual
+    Add into another directly (a residual sum always feeds a ReLU next), so a
+    full transitive closure isn't needed today. Scoped to `Add` specifically
+    — no current architecture uses `Concat` or an attention-style `Mul` as a
+    combining op, so those aren't covered.
+    """
+    if not exclude_nodes:
+        return list(exclude_nodes), []
+
+    graph = onnx.load(str(graph_path)).graph
+    consumers_by_input: dict[str, list] = {}
+    for node in graph.node:
+        for tensor in node.input:
+            consumers_by_input.setdefault(tensor, []).append(node)
+    by_name = {node.name: node for node in graph.node}
+
+    expanded = list(exclude_nodes)
+    notes: list[str] = []
+    for name in exclude_nodes:
+        node = by_name.get(name)
+        if node is None:
+            continue
+        for output in node.output:
+            for consumer in consumers_by_input.get(output, []):
+                if consumer.op_type == "Add" and consumer.name not in expanded:
+                    expanded.append(consumer.name)
+                    notes.append(
+                        f"{name!r} feeds a residual Add ({consumer.name!r}); excluding it alone "
+                        f"would be silently ignored by the quantizer, so the Add is now excluded "
+                        f"too — that is the only way to actually keep {name!r} in float32"
+                    )
+    return expanded, notes
+
+
 def to_int8(
     src: Path,
     dst: Path,
     calibration_loader,
     config: QuantConfig,
     input_name: str = "input",
-) -> Path:
+) -> list[str]:
     """Static INT8 in QDQ format with per-channel weight scales.
 
     Per-channel matters: one scale for an entire conv weight tensor is set by its
     single largest-magnitude filter, so every other filter loses resolution. A
     scale per output channel costs nothing at inference and is usually the
     difference between "INT8 is fine" and "INT8 lost 5 points".
+
+    Returns any warnings produced while resolving `config.exclude_nodes`.
     """
     dst.parent.mkdir(parents=True, exist_ok=True)
     reader = LoaderCalibrationReader(calibration_loader, input_name, config.calibration_batches)
@@ -216,6 +266,8 @@ def to_int8(
         # unexplained accuracy drops.
         quant_pre_process(str(src), str(prepared), skip_symbolic_shape=False)
 
+        exclude_nodes, notes = _expand_exclusions_across_residual_adds(prepared, config.exclude_nodes)
+
         quantize_static(
             model_input=str(prepared),
             model_output=str(dst),
@@ -226,10 +278,10 @@ def to_int8(
             activation_type=_activation_type(),
             weight_type=QuantType.QInt8,
             calibrate_method=CALIBRATION_METHODS[config.calibrate],
-            nodes_to_exclude=list(config.exclude_nodes) or None,
+            nodes_to_exclude=exclude_nodes or None,
             extra_options={"ActivationSymmetric": False, "WeightSymmetric": True},
         )
-    return dst
+    return notes
 
 
 def quantize(
@@ -258,7 +310,7 @@ def quantize(
     if precision == "int8":
         if calibration_loader is None:
             raise ValueError("INT8 static quantization needs a calibration loader (use the train split)")
-        to_int8(src, dst, calibration_loader, config, input_name=input_name)
+        warnings.extend(to_int8(src, dst, calibration_loader, config, input_name=input_name))
     elif precision == "fp16":
         to_fp16(src, dst)
         warnings.append(
