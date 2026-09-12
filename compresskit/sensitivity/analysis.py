@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from .core.export import layer_node_map
+from ..core.export import layer_node_map
 
 QUANTIZABLE = (nn.Conv2d, nn.Linear, nn.ConvTranspose2d)
 
