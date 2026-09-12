@@ -37,7 +37,7 @@ python3 -m venv .venv && ./.venv/bin/pip install -e .
 
 ```python
 import compresskit as ck
-from compresskit.data import calibration_loader, test_loader, train_loader
+from compresskit.zoo.data import calibration_loader, test_loader, train_loader
 
 result = ck.compress(
     model, calibration_loader(), test_loader(),
@@ -142,21 +142,28 @@ These are enforced in code, not just documented:
 
 ```
 compresskit/
-  models.py        CIFAR ResNet-20/56, VGG-16-BN
-  data.py          CIFAR-10 loaders with train / calibration / test role separation
-  host.py          CPU/ISA probe, INT8 gating, training device
-  export.py        torch -> ONNX, and ONNX-node <-> torch-layer naming
-  benchmark.py     the measurement harness (latency, accuracy, size, host context)
-  prune.py         Torch-Pruning DepGraph wrapper: L1 magnitude, SIMD alignment
-  recover.py       batch-norm re-estimation
-  distill.py       KD and Decoupled-KD losses, teacher = original model
-  quantize.py      ORT static INT8 / FP16, op-coverage reporting
-  sensitivity.py   per-layer one-at-a-time MSE / SQNR analysis
-  search.py        budget-driven search with early exit
-  pipeline.py      staged orchestration, ordering enforcement
-  report.py        before/after tables, Pareto plot, sensitivity chart
-  train.py         baseline training, checkpoint I/O
-  cli.py           command line interface
+  core/              cross-cutting infra every technique depends on
+    host.py            CPU/ISA probe, INT8 gating, training device
+    export.py          torch -> ONNX, and ONNX-node <-> torch-layer naming
+    benchmark.py        the measurement harness (latency, accuracy, size, host context)
+  pruning/            TECHNIQUE: structured channel pruning
+    prune.py            Torch-Pruning DepGraph wrapper: L1 magnitude, SIMD alignment
+    recover.py           batch-norm re-estimation
+  quantization/        TECHNIQUE: INT8/FP16 quantization
+    quantize.py          ORT static INT8 / FP16, op-coverage reporting
+  distillation/         TECHNIQUE: knowledge distillation
+    distill.py            KD and Decoupled-KD losses, teacher = original model
+  sensitivity/          TECHNIQUE: per-layer sensitivity analysis
+    analysis.py            per-layer one-at-a-time MSE / SQNR analysis
+  pipeline.py         staged orchestration, ordering enforcement
+  search.py           budget-driven search with early exit
+  report.py           before/after tables, Pareto plot, sensitivity chart
+  cli.py              command line interface
+  zoo/                project-specific reference material, not the general API
+    models.py           CIFAR ResNet-20/56, VGG-16-BN
+    data.py             CIFAR-10 loaders with train / calibration / test role separation
+    train.py            baseline training, checkpoint I/O
+    har.py              human-action-recognition dataset/model support
 experiments/
   train_baseline.py  train ResNet-56 / VGG-16-BN on CIFAR-10 (MPS)
   run_sweep.py       ratio x precision sweep -> CSV + Pareto report
