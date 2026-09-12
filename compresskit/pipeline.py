@@ -230,7 +230,9 @@ class Pipeline:
             name = f"{index + 1}_{stage.kind}"
 
             if stage.kind == "prune":
-                pruner = StructuredPruner(self.model, example, PruneConfig(**stage.options))
+                pruner = StructuredPruner(
+                    self.model, example, PruneConfig(**stage.options), loader=self.calibration_loader
+                )
                 # BN statistics go stale the moment channels are removed, so
                 # refresh them between iterative steps or the next importance
                 # ranking is computed on a mis-normalised network.

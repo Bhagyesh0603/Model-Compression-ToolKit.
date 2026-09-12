@@ -389,6 +389,49 @@ class TestPrune:
         net = nn.Sequential(nn.Conv2d(3, 8, 3, padding=1), nn.ReLU(), nn.Conv2d(8, 10, 1))
         assert classifier_layers(net) == [net[2]]
 
+    def test_max_ratio_clamp_does_not_silently_break_alignment(self):
+        """Torch-Pruning clamps whatever ratio it's given to max_ratio
+        *after* alignment is computed against it — aligning against the raw
+        (uncapped) ratio and letting that clamp happen afterwards silently
+        reintroduces an unaligned channel count (previously observed: 64
+        channels -> 25, not a multiple of anything)."""
+        net = ARCHITECTURES["resnet20"]()
+        example = torch.randn(1, 3, 32, 32)
+        _, stats = prune(
+            net, example, ratio=0.5, align=16, max_ratio=0.6, ratio_overrides={"layer3.0.conv2": 0.95}
+        )
+        for name in ("layer3.0.conv2", "layer3.0.downsample.0", "layer3.1.conv2", "layer3.2.conv2"):
+            after = stats.channels[name][1]
+            assert after % 8 == 0, f"{name} kept {after} channels, not a multiple of 8"
+
+    def test_taylor_without_a_loader_raises_a_clear_error(self, model, example):
+        """Taylor importance needs a real backward pass; without one it used
+        to crash deep inside Torch-Pruning with a cryptic AttributeError."""
+        with pytest.raises(ValueError, match="taylor"):
+            prune(model, example, ratio=0.5, align=8, criterion="taylor")
+
+    def test_taylor_with_a_loader_actually_uses_the_gradient(self, model, example, loader):
+        """Same ratio/align as magnitude pruning should select a *different*
+        set of channels — proof the gradient path is real, not silently
+        equivalent to (or falling back onto) magnitude pruning."""
+        torch.manual_seed(0)
+        by_magnitude, _ = prune(model, example, ratio=0.5, align=8, criterion="magnitude")
+        by_taylor, stats = prune(model, example, ratio=0.5, align=8, criterion="taylor", loader=loader, batches=2)
+
+        assert stats.params_after < stats.params_before
+        assert by_magnitude.features[0].weight.shape == by_taylor.features[0].weight.shape
+        assert not torch.equal(by_magnitude.features[0].weight, by_taylor.features[0].weight)
+
+    def test_global_pruning_warns_when_alignment_leaves_most_layers_untouched(self):
+        """global_pruning=True bypasses the per-layer alignment logic
+        entirely, so a coarse align can silently zero out most of the
+        network — this must surface as a warning instead of nothing."""
+        net = ARCHITECTURES["resnet20"]()
+        example = torch.randn(1, 3, 32, 32)
+        _, stats = prune(net, example, ratio=0.7, align=16, global_pruning=True)
+
+        assert any("global_pruning" in w for w in stats.warnings)
+
 
 class TestPruneOnRealArchitectures:
     """The synthetic models above are built to hit one specific edge case

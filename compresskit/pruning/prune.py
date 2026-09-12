@@ -30,6 +30,11 @@ Three things this wrapper adds over calling Torch-Pruning directly:
   group instead, and records the resolution in `PruneStats.warnings`.
 * **The classifier is never pruned.** Its output width is the class count, so
   pruning it changes what the model predicts rather than how fast it predicts.
+
+Untested territory: grouped/depthwise convolutions (MobileNet-style
+`groups>1`). None of `compresskit.zoo.models`'s architectures use them, so the
+grouping and alignment logic above has never been exercised against a layer
+whose channels aren't independently prunable one at a time.
 """
 
 from __future__ import annotations
@@ -39,6 +44,7 @@ from dataclasses import dataclass, field
 
 import torch
 import torch.nn as nn
+import torch.nn.functional as F
 import torch_pruning as tp
 
 CRITERIA = {
@@ -51,6 +57,14 @@ CRITERIA = {
 
 @dataclass
 class PruneConfig:
+    """`global_pruning=True` is not protected by the per-layer SIMD-alignment
+    logic below — it distributes pruning unevenly across layers by design, so
+    a fixed per-layer ratio can't be computed ahead of time the way the
+    default (local) mode allows. A layer can still end up silently untouched
+    there; `StructuredPruner.stats()` only warns about it after the fact
+    rather than preventing it.
+    """
+
     ratio: float = 0.5
     align: int = 16
     steps: int = 1
@@ -229,8 +243,20 @@ class StructuredPruner:
         example_inputs: torch.Tensor,
         config: PruneConfig | None = None,
         ignored_layers: list[nn.Module] | None = None,
+        loader=None,
+        batches: int = 8,
     ):
         self.config = config or PruneConfig()
+        if self.config.criterion == "taylor" and loader is None:
+            raise ValueError(
+                "criterion='taylor' ranks channels by how much removing them would change the "
+                "loss, which needs a real forward+backward pass over labeled data — pass "
+                "loader=<a DataLoader yielding (images, labels) batches> (e.g. the same "
+                "calibration_loader used for BN recalibration and sensitivity analysis)"
+            )
+        self.loader = loader
+        self.batches = batches
+
         # Torch-Pruning rewrites modules in place, and the unpruned model is
         # still needed as the distillation teacher, so we work on a copy.
         self.model = copy.deepcopy(model).cpu().eval()
@@ -267,6 +293,18 @@ class StructuredPruner:
         # layers by design, so it relies solely on the post-hoc check in
         # `stats()` instead, same as before.
         if requested_align and not self.config.global_pruning:
+            # Torch-Pruning clamps whatever ratio we hand it to max_ratio
+            # internally (`min(requested, max_pruning_ratio)`), *after* our
+            # alignment math already ran — so aligning against the raw
+            # requested ratio and letting the clamp happen afterwards would
+            # silently reintroduce misalignment on any layer whose ratio
+            # exceeds max_ratio. Capping here first means we align against
+            # what will actually be applied. The result can still land up to
+            # half an alignment block away from max_ratio itself — the same
+            # tolerance already accepted for the primary requested ratio.
+            def capped_ratio_of(name: str) -> float:
+                return min(ratio_of(name), self.config.max_ratio)
+
             relaxed: dict[str, int] = {}
             unprunable: list[str] = []
             per_layer_ratio: dict[str, float] = {}
@@ -283,14 +321,14 @@ class StructuredPruner:
                 # group-conflict resolution above exists to prevent, just
                 # self-inflicted by alignment instead of by the caller.
                 widths = {self._widths_before[n] for n in prunable}
-                ratios = {ratio_of(n) for n in prunable}
+                ratios = {capped_ratio_of(n) for n in prunable}
                 if len(widths) != 1 or len(ratios) != 1:
                     # Should not happen — resolved_overrides already unified
                     # the ratio, and tied modules share a channel dimension —
                     # but if it ever does, fall back to per-name rounding
                     # rather than guessing which value should win the group.
                     for n in prunable:
-                        ratio = ratio_of(n)
+                        ratio = capped_ratio_of(n)
                         if ratio <= 0:
                             continue
                         aligned_ratio, layer_align = _aligned_ratio(self._widths_before[n], ratio, requested_align)
@@ -362,11 +400,42 @@ class StructuredPruner:
     def steps_remaining(self) -> int:
         return self.config.steps - self.steps_taken
 
+    def _accumulate_gradients(self) -> None:
+        """Populate `.grad` on every parameter so Taylor importance has
+        something to read — it ranks channels by how much removing them
+        would move a real loss, which needs a real backward pass, not just
+        the weight magnitudes the other criteria use.
+
+        Re-run before every `step()`, not just the first: the weights (and
+        therefore the gradients) change after each pruning step, so a Taylor
+        ranking computed against stale, pre-pruning weights would be
+        importance-scoring a network that no longer exists.
+        """
+        self.model.zero_grad(set_to_none=True)
+        for index, batch in enumerate(self.loader):
+            if index >= self.batches:
+                break
+            if not (isinstance(batch, (list, tuple)) and len(batch) >= 2):
+                raise ValueError(
+                    f"criterion='taylor' needs (images, labels) batches for a real "
+                    f"cross-entropy loss; got {type(batch).__name__} instead — a loader "
+                    f"yielding bare images (as sensitivity.analyze tolerates) isn't enough"
+                )
+            images, labels = batch[0], batch[1]
+            loss = F.cross_entropy(self.model(images), labels)
+            loss.backward()
+
     def step(self) -> nn.Module:
         """Remove one increment of channels. Fine-tune after this, then repeat."""
         if self.steps_remaining <= 0:
             raise RuntimeError("all pruning steps already taken")
+        if self.config.criterion == "taylor":
+            self._accumulate_gradients()
         self.pruner.step()
+        if self.config.criterion == "taylor":
+            # Nothing downstream (a between_steps distillation fine-tune, in
+            # particular) should see these as a head start on its own loss.
+            self.model.zero_grad(set_to_none=True)
         self.steps_taken += 1
         return self.model
 
@@ -387,8 +456,9 @@ class StructuredPruner:
         widths_after = self._channel_widths()
 
         warnings = list(self.warnings)
+        candidates = sorted(self._candidate_names - self._flagged_unprunable)
         if not self.config.global_pruning:
-            for name in sorted(self._candidate_names - self._flagged_unprunable):
+            for name in candidates:
                 before = self._widths_before[name]
                 after = widths_after.get(name, before)
                 requested = self.ratio_of(name)
@@ -398,6 +468,24 @@ class StructuredPruner:
                         f"were actually removed — likely blocked by a dependency constraint "
                         f"(e.g. a residual connection) or a max_ratio cap"
                     )
+        elif self.config.align and candidates:
+            # global_pruning distributes pruning unevenly across layers by
+            # design, so a per-layer "0% pruned" flag would mostly be noise
+            # here — some layers are *supposed* to come out untouched. But
+            # global mode also isn't protected by the per-layer alignment
+            # logic above at all (see PruneConfig's docstring), so a
+            # suspiciously large fraction of untouched layers is the
+            # signature of SIMD alignment silently rejecting groups rather
+            # than global importance legitimately sparing them.
+            untouched = [n for n in candidates if widths_after.get(n, self._widths_before[n]) == self._widths_before[n]]
+            if len(untouched) > len(candidates) / 2:
+                warnings.append(
+                    f"{len(untouched)} of {len(candidates)} candidate layers were left completely "
+                    f"unpruned ({sorted(untouched)[:8]}{', ...' if len(untouched) > 8 else ''}) — "
+                    f"global_pruning=True is not protected by this module's per-layer SIMD-alignment "
+                    f"logic, so this may be align={self.config.align} silently rejecting groups rather "
+                    f"than global importance legitimately sparing these layers; try align=1 to check"
+                )
 
         return PruneStats(
             params_before=self.params_before,
@@ -421,13 +509,22 @@ def prune(
     steps: int = 1,
     criterion: str = "magnitude",
     between_steps=None,
+    loader=None,
+    batches: int = 8,
     **kwargs,
 ) -> tuple[nn.Module, PruneStats]:
-    """One-call structured pruning. Returns (pruned copy, stats)."""
+    """One-call structured pruning. Returns (pruned copy, stats).
+
+    `loader` (yielding (images, labels) batches) is only required when
+    `criterion="taylor"` — every other criterion ranks channels from weights
+    alone and ignores it.
+    """
     pruner = StructuredPruner(
         model,
         example_inputs,
         PruneConfig(ratio=ratio, align=align, steps=steps, criterion=criterion, **kwargs),
+        loader=loader,
+        batches=batches,
     )
     pruner.run(between_steps=between_steps)
     return pruner.model, pruner.stats()
