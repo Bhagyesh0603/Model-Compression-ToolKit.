@@ -250,7 +250,12 @@ class Pipeline:
 
             elif stage.kind == "distill":
                 options = dict(stage.options)
-                train_data = options.pop("loader", None) or self.train_loader
+                explicit_loader = options.pop("loader", None)
+                # `or` would treat a loader with zero batches as falsy and
+                # silently fall back to self.train_loader instead — an
+                # explicitly passed loader must never be second-guessed like
+                # that, empty or not.
+                train_data = explicit_loader if explicit_loader is not None else self.train_loader
                 if train_data is None:
                     raise ValueError(
                         "distillation needs training data — pass train_loader= to Pipeline() "

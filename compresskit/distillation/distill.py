@@ -133,6 +133,13 @@ def distill(
     config = config or DistillConfig()
     device = config.device
 
+    if len(loader) == 0:
+        raise ValueError(
+            "distillation needs at least one training batch — got an empty loader; "
+            "a silently completed 0-epoch run would report success while never having "
+            "updated a single weight"
+        )
+
     student.to(device).train()
     # The teacher is only ever read from, but it belongs to the caller — freeze
     # it for the duration and hand it back exactly as it arrived, or a direct

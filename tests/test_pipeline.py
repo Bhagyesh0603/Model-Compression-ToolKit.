@@ -138,6 +138,31 @@ class TestFullRun:
         with pytest.raises(ValueError, match="distillation needs training data"):
             pipe.distill(epochs=1).run(verbose=False)
 
+    def test_distill_rejects_an_empty_loader_instead_of_training_on_nothing(self, model):
+        """An empty loader used to let `distill` "complete" every epoch
+        having iterated zero batches — no error, no warning, and the student
+        came back byte-identical to how it went in."""
+        from torch.utils.data import DataLoader, TensorDataset
+
+        from compresskit.distillation import DistillConfig, distill
+
+        empty_loader = DataLoader(TensorDataset(torch.empty(0, 3, 32, 32), torch.empty(0, dtype=torch.long)))
+        with pytest.raises(ValueError, match="at least one training batch"):
+            distill(model, model, empty_loader, DistillConfig(epochs=2, device="cpu"))
+
+    def test_distill_stage_never_silently_substitutes_an_explicit_empty_loader(self, model, loader, tmp_path):
+        """A loader with zero batches is falsy in Python, so `explicit or
+        self.train_loader` used to quietly fall back to the pipeline's own
+        train_loader instead of the (empty) one the caller actually passed
+        to `.distill(loader=...)` — training on the wrong data with no sign
+        anything was substituted."""
+        from torch.utils.data import DataLoader, TensorDataset
+
+        empty_loader = DataLoader(TensorDataset(torch.empty(0, 3, 32, 32), torch.empty(0, dtype=torch.long)))
+        pipe = Pipeline(model, loader, loader, train_loader=loader, workdir=tmp_path / "a", warmup=1, runs=4)
+        with pytest.raises(ValueError, match="at least one training batch"):
+            pipe.distill(epochs=1, loader=empty_loader).run(verbose=False)
+
     def test_result_serialises_and_renders(self, pipeline, tmp_path):
         result = pipeline.prune(0.5, align=8).recover().quantize().run(verbose=False)
 
