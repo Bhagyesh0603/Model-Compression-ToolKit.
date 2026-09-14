@@ -172,7 +172,7 @@ class HostContext:
 
     @property
     def reduce_range(self) -> bool:
-        """Use 7-bit activations to dodge saturation on pre-VNNI x86.
+        """Quantize weights to 7 bits to dodge saturation on pre-VNNI x86.
 
         Only x86 without VNNI has the INT8 accumulator overflow problem this
         works around; on ARM it just throws away a bit of precision for nothing.

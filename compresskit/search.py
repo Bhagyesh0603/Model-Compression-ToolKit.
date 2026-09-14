@@ -17,6 +17,7 @@ and gives back accuracy it never needed to lose.
 
 from __future__ import annotations
 
+import math
 import re
 from dataclasses import dataclass, field
 from pathlib import Path
@@ -29,7 +30,8 @@ from .pipeline import Pipeline, PipelineResult
 from .sensitivity import SensitivityReport, analyze
 
 _BUDGET_TERM = re.compile(
-    r"(?P<key>latency|accuracy_drop|accuracy|size)\s*(?P<op>[<>]=?)\s*(?P<value>[\d.]+)\s*(?P<unit>ms|s|%|pp|mb|gb)?",
+    r"\b(?P<key>latency|accuracy_drop|accuracy|size)\s*(?P<op>[<>]=?)\s*(?P<value>[\d.]+)\s*"
+    r"(?P<unit>kb|mb|gb|ms|s|pp|%)?(?!\w)",
     re.IGNORECASE,
 )
 
@@ -50,6 +52,7 @@ class Budget:
             return cls()
 
         budget = cls()
+        seen: dict[str, float] = {}
         matched = 0
         for term in _BUDGET_TERM.finditer(spec):
             matched += 1
@@ -71,13 +74,33 @@ class Budget:
                 )
 
             if key == "latency":
-                budget.max_latency_ms = value * 1000.0 if unit == "s" else value
+                field_name, resolved = "max_latency_ms", (value * 1000.0 if unit == "s" else value)
             elif key == "accuracy_drop":
-                budget.max_accuracy_drop_pp = value
+                field_name, resolved = "max_accuracy_drop_pp", value
             elif key == "accuracy":
-                budget.min_accuracy = value / 100.0 if (unit == "%" or value > 1.0) else value
-            elif key == "size":
-                budget.max_size_mb = value * 1024.0 if unit == "gb" else value
+                field_name, resolved = "min_accuracy", (value / 100.0 if (unit == "%" or value > 1.0) else value)
+            else:
+                field_name = "max_size_mb"
+                if unit == "kb":
+                    resolved = value / 1024.0
+                elif unit == "gb":
+                    resolved = value * 1024.0
+                else:
+                    resolved = value
+
+            # Two different values for the same key is an unresolvable
+            # ambiguity — silently keeping whichever term matched last would
+            # discard the other half of the caller's intent without a trace.
+            # An exact repeat (e.g. composed from two code paths that agree)
+            # is harmless and stays silent.
+            previous = seen.get(key)
+            if previous is not None and not math.isclose(previous, resolved, rel_tol=1e-9):
+                raise ValueError(
+                    f"{spec!r} specifies {key!r} twice with conflicting values "
+                    f"({previous:g} and {resolved:g} after unit conversion) — remove one"
+                )
+            seen[key] = resolved
+            setattr(budget, field_name, resolved)
 
         if not matched:
             raise ValueError(
