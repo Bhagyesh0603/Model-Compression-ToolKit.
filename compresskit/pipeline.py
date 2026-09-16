@@ -53,11 +53,11 @@ class PipelineResult:
 
     @property
     def speedup(self) -> float:
-        return self.baseline.latency.median_ms / self.final.latency.median_ms
+        return self.baseline.latency.median_ms / max(self.final.latency.median_ms, 1e-9)
 
     @property
     def size_reduction(self) -> float:
-        return self.baseline.size_mb / self.final.size_mb
+        return self.baseline.size_mb / max(self.final.size_mb, 1e-9)
 
     @property
     def efficiency_score(self) -> float:

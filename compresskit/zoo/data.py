@@ -7,7 +7,13 @@ from torchvision import datasets, transforms
 CIFAR10_MEAN = (0.4914, 0.4822, 0.4465)
 CIFAR10_STD = (0.2470, 0.2435, 0.2616)
 
-DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "data"
+# In label order, so index == the integer target the loader yields.
+CIFAR10_CLASSES = (
+    "airplane", "automobile", "bird", "cat", "deer",
+    "dog", "frog", "horse", "ship", "truck",
+)
+
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent / "data"
 
 _train_tf = transforms.Compose([
     transforms.RandomCrop(32, padding=4),

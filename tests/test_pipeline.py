@@ -4,11 +4,13 @@ import pytest
 import torch
 
 from compresskit.core import host as host_mod
+from compresskit.core.benchmark import Latency, Measurement
 from compresskit.core.export import to_onnx
 from compresskit.core.host import HostContext
-from compresskit.pipeline import Pipeline
+from compresskit.pipeline import Pipeline, PipelineResult
 from compresskit.quantization import QuantConfig, quantize
-from compresskit.report import render
+from compresskit.report import render, sensitivity_figure
+from compresskit.sensitivity.analysis import LayerSensitivity, SensitivityReport
 from compresskit.zoo.models import build
 
 
@@ -16,6 +18,16 @@ from compresskit.zoo.models import build
 def pipeline(model, loader, tmp_path):
     return Pipeline(model, loader, loader, train_loader=loader, workdir=tmp_path / "artifacts",
                     warmup=2, runs=8)
+
+
+def _latency(median_ms=1.0):
+    return Latency(median_ms=median_ms, p95_ms=median_ms, mean_ms=median_ms, stdev_ms=0.0,
+                    runs=1, warmup=0, threads=1, batch=1)
+
+
+def _measurement(stage="stage", accuracy=0.9, median_ms=1.0, size_mb=1.0, precision="fp32"):
+    return Measurement(stage=stage, precision=precision, accuracy=accuracy, latency=_latency(median_ms),
+                       size_mb=size_mb, parameters=100, artifact="m.onnx", host={"cpu": "test"})
 
 
 class TestOrdering:
@@ -223,3 +235,49 @@ class TestFullRun:
         Pipeline(model, loader, loader, workdir=tmp_path / "a", warmup=1, runs=4) \
             .prune(0.5, align=8).run(verbose=False)
         assert model.features[0].out_channels == before
+
+
+class TestReportRendering:
+    def test_sensitivity_chart_flags_the_worst_layer_when_sqnr_is_negative(self):
+        """`worst * 1.05` as a "within 5% of worst" threshold flips direction
+        once `worst` is negative (noise > signal — the case this chart exists
+        to flag), so no bar, not even the actual worst one, used to render red."""
+        report = SensitivityReport(
+            layers=[
+                LayerSensitivity(name="a", kind="conv", parameters=1, mse=0.0, sqnr_db=12.0),
+                LayerSensitivity(name="b", kind="conv", parameters=1, mse=0.0, sqnr_db=-6.0),
+                LayerSensitivity(name="c", kind="conv", parameters=1, mse=0.0, sqnr_db=-8.0),
+            ],
+            bits=8, batches=1,
+        )
+        figure = sensitivity_figure(report)
+        axis = figure.axes[0]
+        # ranked() sorts worst (lowest SQNR) first, then the chart reverses for
+        # bottom-to-top display, so bar order is [a, b, c] on the y-axis.
+        colours = [bar.get_facecolor() for bar in axis.patches]
+        from compresskit.report import ROSE
+        import matplotlib.colors as mcolors
+        rose_rgb = mcolors.to_rgba(ROSE, alpha=0.8)
+        assert colours[2] == pytest.approx(rose_rgb), "the actual worst layer (c, -8dB) must be flagged rose"
+        assert colours[0] != pytest.approx(rose_rgb), "the best layer must not be flagged"
+
+    def test_size_card_is_not_green_when_the_model_grew(self, tmp_path):
+        baseline = _measurement(stage="baseline", size_mb=1.0)
+        grown = _measurement(stage="1_stage", size_mb=1.5)
+        result = PipelineResult(baseline=baseline, stages=[grown], host={"cpu": "test"})
+
+        html = render(result, tmp_path / "report.html").read_text()
+        size_card = html.split('<div class="label">size</div>')[1].split("</div></div>")[0]
+        assert 'class="value good"' not in size_card
+        assert 'class="value warn"' in size_card
+
+    def test_speedup_and_size_reduction_do_not_divide_by_zero(self, tmp_path):
+        baseline = _measurement(stage="baseline", median_ms=5.0, size_mb=2.0)
+        zero_latency = _measurement(stage="1_stage", median_ms=0.0, size_mb=0.0)
+        result = PipelineResult(baseline=baseline, stages=[zero_latency], host={"cpu": "test"})
+
+        assert result.speedup > 0 and result.speedup < float("inf")
+        assert result.size_reduction > 0 and result.size_reduction < float("inf")
+        # Must not raise, and must produce a finite (if huge) rendered report.
+        html = render(result, tmp_path / "report.html").read_text()
+        assert "inf" not in html.lower().replace("info", "")

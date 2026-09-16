@@ -44,7 +44,7 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 TEST_FRACTION = 0.15
 
-DEFAULT_ROOT = Path(__file__).resolve().parent.parent / "data" / "har" / "Human Action Recognition"
+DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "har" / "Human Action Recognition"
 
 _train_tf = transforms.Compose([
     transforms.RandomResizedCrop(224),

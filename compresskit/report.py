@@ -121,7 +121,11 @@ def sensitivity_figure(report):
     names = [layer.name for layer in ranked][::-1]
     values = [layer.sqnr_db for layer in ranked][::-1]
     worst = min(values) if values else 0
-    colours = [ROSE if v <= worst * 1.05 else VIOLET for v in values]
+    # "Within 5% of the worst" has to shift the threshold *toward* worst
+    # regardless of its sign: `worst * 1.05` moves a negative worst further
+    # negative (inverting the comparison), so scale by magnitude instead.
+    threshold = worst + abs(worst) * 0.05
+    colours = [ROSE if v <= threshold else VIOLET for v in values]
 
     axis.barh(range(len(values)), values, color=colours, alpha=0.8, height=0.72)
     axis.set_yticks(range(len(names)))
@@ -145,7 +149,7 @@ def _stage_rows(baseline: Measurement, stages: list[Measurement]) -> str:
     rows = []
     for index, m in enumerate([baseline] + stages):
         drop = (baseline.accuracy - m.accuracy) * 100
-        speed = baseline.latency.median_ms / m.latency.median_ms
+        speed = baseline.latency.median_ms / max(m.latency.median_ms, 1e-9)
         rows.append(
             f'<tr class="{"baseline" if index == 0 else ""}">'
             f"<td class='mono'>{html.escape(m.stage)}</td>"
@@ -177,7 +181,8 @@ def render(result, path: str | Path, sensitivity=None, title: str = "Compression
               f"{result.speedup:.2f}x vs {baseline.latency.median_ms:.3f} ms",
               "good" if result.speedup > 1.05 else "warn"),
         _card("size", f"{final.size_mb:.2f} MB",
-              f"{result.size_reduction:.2f}x vs {baseline.size_mb:.2f} MB", "good"),
+              f"{result.size_reduction:.2f}x vs {baseline.size_mb:.2f} MB",
+              "good" if result.size_reduction > 1.0 else "warn"),
         _card("efficiency score", f"{result.efficiency_score:.4f}",
               "harmonic mean of accuracy and compression"),
     ])
@@ -257,7 +262,7 @@ def render_sweep(baseline: Measurement, rows: list[dict], path: str | Path,
         f"<td class='num'>{r['measurement'].accuracy * 100:.2f}%</td>"
         f"<td class='num'>{(baseline.accuracy - r['measurement'].accuracy) * 100:+.2f}</td>"
         f"<td class='num'>{r['measurement'].latency.median_ms:.3f}</td>"
-        f"<td class='num'>{baseline.latency.median_ms / r['measurement'].latency.median_ms:.2f}x</td>"
+        f"<td class='num'>{baseline.latency.median_ms / max(r['measurement'].latency.median_ms, 1e-9):.2f}x</td>"
         f"<td class='num'>{r['measurement'].size_mb:.2f}</td>"
         f"<td class='num'>{efficiency_score(baseline, r['measurement']):.4f}</td></tr>"
         for r in ordered
