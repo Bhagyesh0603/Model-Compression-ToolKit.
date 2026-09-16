@@ -145,6 +145,7 @@ def cmd_compress(args) -> int:
         align=args.align,
         distill_epochs=args.distill,
         distill_loss=args.loss,
+        qat_epochs=args.qat_epochs,
     )
     print()
     print("=" * 78)
@@ -211,6 +212,7 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--align", type=int, default=16)
     auto.add_argument("--distill", type=int, default=10, help="distillation epochs if needed")
     auto.add_argument("--loss", default="dkd", choices=["kd", "dkd"])
+    auto.add_argument("--qat-epochs", type=int, default=3, help="QAT epochs if quantize-only misses accuracy")
     auto.add_argument("--batch-size", type=int, default=128)
     auto.add_argument("--workdir", default="artifacts/search")
     auto.add_argument("--report", help="write an HTML report here")

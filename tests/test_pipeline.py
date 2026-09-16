@@ -8,7 +8,7 @@ from compresskit.core.benchmark import Latency, Measurement
 from compresskit.core.export import to_onnx
 from compresskit.core.host import HostContext
 from compresskit.pipeline import Pipeline, PipelineResult
-from compresskit.quantization import QuantConfig, quantize
+from compresskit.quantization import QATConfig, QuantConfig, qat, quantize
 from compresskit.report import render, sensitivity_figure
 from compresskit.sensitivity.analysis import LayerSensitivity, SensitivityReport
 from compresskit.zoo.models import build
@@ -235,6 +235,44 @@ class TestFullRun:
         Pipeline(model, loader, loader, workdir=tmp_path / "a", warmup=1, runs=4) \
             .prune(0.5, align=8).run(verbose=False)
         assert model.features[0].out_channels == before
+
+
+class TestQAT:
+    """QAT trains against simulated quantization noise to recover accuracy
+    plain PTQ alone loses -- mirrors distill()'s test density since it
+    follows the exact same structural contract (empty-loader guard, borrowed-
+    state restoration on failure)."""
+
+    def test_qat_rejects_an_empty_loader_instead_of_training_on_nothing(self, model):
+        from torch.utils.data import DataLoader, TensorDataset
+
+        empty_loader = DataLoader(TensorDataset(torch.empty(0, 3, 32, 32), torch.empty(0, dtype=torch.long)))
+        with pytest.raises(ValueError, match="at least one training batch"):
+            qat(model, empty_loader, QATConfig(epochs=2, device="cpu"))
+
+    def test_forward_is_restored_even_when_training_fails_partway_through(self, model, loader):
+        """Without restoration, a mid-run exception would leave every Conv2d/
+        Linear's forward permanently patched -- a later `to_onnx` export would
+        then silently trace the fake-quantized graph instead of the real one."""
+        original_conv_forward = model.features[0].forward.__func__
+
+        def flaky_on_epoch(m, epoch, stats):
+            raise RuntimeError("simulated failure")
+
+        with pytest.raises(RuntimeError, match="simulated failure"):
+            qat(model, loader, QATConfig(epochs=2, device="cpu"), on_epoch=flaky_on_epoch)
+
+        assert model.features[0].forward.__func__ is original_conv_forward
+
+    def test_pipeline_qat_then_quantize_produces_a_measured_stage(self, model, loader, tmp_path):
+        result = Pipeline(model, loader, loader, train_loader=loader, workdir=tmp_path / "a", warmup=1, runs=4) \
+            .qat(epochs=1).quantize().run(verbose=False)
+        assert [m.stage for m in result.stages] == ["1_qat", "2_quantize"]
+
+    def test_qat_stage_needs_training_data(self, model, loader, tmp_path):
+        pipe = Pipeline(model, loader, loader, workdir=tmp_path / "a", warmup=1, runs=4)
+        with pytest.raises(ValueError, match="QAT needs training data"):
+            pipe.qat(epochs=1).run(verbose=False)
 
 
 class TestReportRendering:

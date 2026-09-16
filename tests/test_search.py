@@ -19,6 +19,21 @@ class TestEscalation:
         assert result.chosen.label == "quantize-only"
         assert result.sensitivity is None, "sensitivity analysis is wasted work if we stopped early"
 
+    def test_tries_qat_before_pruning_when_only_accuracy_is_short(self, model, loader, tmp_path):
+        """Quantize-only already meets latency here (an unconstrained-latency
+        budget can never fail on latency), so accuracy is the only possible
+        failure — QAT recovery should be tried before pruning ever starts,
+        since pruning would only make accuracy worse, not better."""
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s", **FAST)
+
+        labels = [a.label for a in result.attempts]
+        assert labels[0] == "quantize-only"
+        assert "qat+quantize" in labels
+        assert labels.index("qat+quantize") < next(
+            (i for i, l in enumerate(labels) if "prune@" in l), len(labels)
+        ), "QAT should be tried before pruning, not after"
+
     def test_escalates_to_pruning_when_latency_is_short(self, model, loader, tmp_path):
         result = compress(model, loader, loader, budget="latency<0.00001ms",
                           workdir=tmp_path / "s", **FAST)

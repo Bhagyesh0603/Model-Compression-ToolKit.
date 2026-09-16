@@ -20,7 +20,9 @@ from compresskit.core.host import probe
 from compresskit.distillation import DistillConfig, cosine_lr, dkd_loss, kd_loss
 from compresskit.zoo.models import ARCHITECTURES, build
 from compresskit.pruning import PruneConfig, classifier_layers, prune, recalibrate_bn
-from compresskit.search import Budget
+from compresskit.pruning.latency_guide import measure_latency_impact
+from compresskit.quantization.qat import fake_quantize_ste
+from compresskit.search import Budget, _merge_gentlest
 from compresskit.sensitivity import analyze, fake_quantize
 
 
@@ -209,6 +211,29 @@ class TestFakeQuantize:
 
     def test_zero_weights_do_not_divide_by_zero(self):
         assert torch.isfinite(fake_quantize(torch.zeros(4, 2, 3, 3))).all()
+
+
+class TestFakeQuantizeSTE:
+    """`fake_quantize` is deliberately no-grad (only ever used inside
+    `analyze()`'s `@torch.no_grad()` probe); QAT needs the same quantize-
+    dequantize math but with a gradient that actually reaches the weight."""
+
+    def test_stays_within_int8_grid_like_fake_quantize(self):
+        torch.manual_seed(0)
+        weight = torch.randn(8, 4, 3, 3)
+        quantized = fake_quantize_ste(weight, bits=8)
+        scale = weight.abs().amax(dim=(1, 2, 3), keepdim=True) / 127
+        levels = (quantized / scale).round()
+        assert levels.abs().max() <= 128
+
+    def test_gradient_reaches_the_original_weight(self):
+        """This is the entire reason a separate function exists: plain
+        `fake_quantize`'s `.round()` has zero gradient everywhere, which
+        would make a QAT training step a no-op."""
+        weight = torch.randn(4, 3, 3, 3, requires_grad=True)
+        fake_quantize_ste(weight, bits=8).sum().backward()
+        assert weight.grad is not None
+        assert torch.all(weight.grad != 0)
 
 
 class TestDistillLosses:
@@ -655,3 +680,54 @@ class TestClassMetrics:
         assert m.class_metrics is not None
         assert m.accuracy == pytest.approx(m.class_metrics.accuracy)
         assert m.as_dict()["class_metrics"]["macro_f1"] == pytest.approx(m.class_metrics.macro_f1)
+
+
+class TestLatencyGuidedPruning:
+    """Ranks prunable groups by *measured* latency impact, not FLOPs or
+    sensitivity -- a separate, complementary signal to `sensitivity.analyze`.
+    Uses reduced warmup/runs throughout since each measurement is a full
+    export+benchmark cycle, not a cheap forward pass."""
+
+    def test_one_impact_per_prunable_group_excluding_the_classifier(self):
+        model = build("resnet20")
+        example = torch.randn(1, 3, 32, 32)
+        report = measure_latency_impact(model, example, probe_ratio=0.3, warmup=2, runs=5)
+
+        classifier_names = {name for m in classifier_layers(model) for name, mod in model.named_modules() if mod is m}
+        named = {n for impact in report.impacts for n in impact.members}
+        assert not named & classifier_names
+
+    def test_ranked_sorts_by_latency_delta_descending(self):
+        model = build("resnet20")
+        example = torch.randn(1, 3, 32, 32)
+        report = measure_latency_impact(model, example, probe_ratio=0.3, warmup=2, runs=5)
+
+        deltas = [impact.latency_delta_ms for impact in report.ranked()]
+        assert deltas == sorted(deltas, reverse=True)
+
+    def test_prune_ratios_boosts_top_half_and_dampens_bottom_half(self):
+        model = build("resnet20")
+        example = torch.randn(1, 3, 32, 32)
+        report = measure_latency_impact(model, example, probe_ratio=0.3, warmup=2, runs=5)
+
+        ratios = report.prune_ratios(base_ratio=0.5, boost=1.2, dampen=0.6, cap=0.9)
+        ranked = report.ranked()
+        half = max(1, len(ranked) // 2)
+        top_names = {name for impact in ranked[:half] for name in impact.members}
+        bottom_names = {name for impact in ranked[half:] for name in impact.members}
+
+        assert all(ratios[name] == pytest.approx(0.6) for name in top_names)
+        assert all(ratios[name] == pytest.approx(0.3) for name in bottom_names)
+
+    def test_prune_ratios_on_an_empty_report_is_empty(self):
+        from compresskit.pruning.latency_guide import LatencyGuidedReport
+
+        assert LatencyGuidedReport(impacts=[], probe_ratio=0.3).prune_ratios(0.5) == {}
+
+
+class TestMergeGentlest:
+    def test_keeps_the_smaller_ratio_when_both_sources_name_the_same_layer(self):
+        assert _merge_gentlest({"a": 0.5}, {"a": 0.3}) == {"a": 0.3}
+
+    def test_keeps_entries_unique_to_either_source(self):
+        assert _merge_gentlest({"a": 0.5}, {"b": 0.3}) == {"a": 0.5, "b": 0.3}

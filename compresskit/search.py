@@ -22,12 +22,26 @@ import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
+import torch
 import torch.nn as nn
 
 from .core import host as host_mod
 from .core.benchmark import Measurement, efficiency_score, measure
 from .pipeline import Pipeline, PipelineResult
+from .pruning import LatencyGuidedReport, measure_latency_impact
 from .sensitivity import SensitivityReport, analyze
+
+
+def _merge_gentlest(overrides_a: dict[str, float], overrides_b: dict[str, float]) -> dict[str, float]:
+    """Combine two ratio-override sources, keeping the gentler ratio wherever
+    both name the same layer — protecting accuracy over maximizing speed
+    whenever the two signals disagree, the same convention
+    `_resolve_group_overrides` already uses for conflicting group overrides.
+    """
+    merged = dict(overrides_a)
+    for name, ratio in overrides_b.items():
+        merged[name] = min(merged.get(name, ratio), ratio)
+    return merged
 
 _BUDGET_TERM = re.compile(
     r"\b(?P<key>latency|accuracy_drop|accuracy|size)\s*(?P<op>[<>]=?)\s*(?P<value>[\d.]+)\s*"
@@ -238,6 +252,7 @@ def compress(
     align: int = 16,
     distill_epochs: int = 10,
     distill_loss: str = "dkd",
+    qat_epochs: int = 3,
     ratio_steps: int = 4,
     search_runs: int = 60,
     search_accuracy_limit: int | None = 2000,
@@ -306,6 +321,28 @@ def compress(
     for failure in attempt.failures:
         log(f"    - {failure}")
 
+    # 1.5. Quantize-only already hits latency/size but not accuracy — QAT
+    #      recovers exactly that loss for less cost than full pruning plus
+    #      distillation, so it's worth trying before escalating further.
+    if train_loader is not None and budget.accuracy_failed(
+        attempt.result.baseline, attempt.result.final
+    ) and not budget.latency_failed(attempt.result.baseline, attempt.result.final):
+        log(f"\n[1.5] QAT recovery ({qat_epochs} epochs)")
+        qat_attempt = _attempt(
+            "qat+quantize",
+            f"qat({qat_epochs} epochs) -> quantize",
+            lambda: run(pipeline("qat").qat(epochs=qat_epochs).quantize()),
+            budget,
+            config={"qat_epochs": qat_epochs},
+        )
+        attempts.append(qat_attempt)
+        log(f"    {qat_attempt.result.final.summary()}")
+        if qat_attempt.met:
+            log("    budget met — stopping.")
+            return finalize(qat_attempt, None)
+        for failure in qat_attempt.failures:
+            log(f"    - {failure}")
+
     # 2. Add pruning. Which layers to protect comes from measured sensitivity,
     #    not from a uniform ratio applied blindly across depths.
     log("\n[2] sensitivity analysis")
@@ -314,10 +351,22 @@ def compress(
 
     best_pruned: Attempt | None = None
     hardest_pruned: Attempt | None = None
+    latency_report: LatencyGuidedReport | None = None
+
+    def merged_ratios(ratio: float) -> dict[str, float]:
+        overrides = report.prune_ratios(ratio)
+        if latency_report is not None:
+            overrides = _merge_gentlest(overrides, latency_report.prune_ratios(ratio))
+        return overrides
+
     # Only prune if speed or size is what's failing. If quantization already hit
     # the latency target and accuracy is the gap, pruning makes accuracy worse —
     # go straight to distillation instead.
     if budget.latency_failed(attempt.result.baseline, attempt.result.final):
+        example = torch.randn(*input_shape)
+        latency_report = measure_latency_impact(model, example, workdir=workdir / "latency_probe")
+        log("    " + "\n    ".join(latency_report.summary(top=5).splitlines()))
+
         low, high = 0.0, 0.9
         for step in range(ratio_steps):
             ratio = round((low + high) / 2, 3)
@@ -328,7 +377,7 @@ def compress(
                 f"prune({ratio:.3f}, align={align}) -> recover -> quantize",
                 lambda r=ratio: run(
                     pipeline(f"prune_{r:.3f}")
-                    .prune(ratio=r, align=align, ratio_overrides=report.prune_ratios(r))
+                    .prune(ratio=r, align=align, ratio_overrides=merged_ratios(r))
                     .recover()
                     .quantize()
                 ),
@@ -369,7 +418,7 @@ def compress(
         def build_distilled():
             pipe = pipeline("distilled")
             if ratio > 0:
-                pipe = pipe.prune(ratio=ratio, align=align, ratio_overrides=report.prune_ratios(ratio)).recover()
+                pipe = pipe.prune(ratio=ratio, align=align, ratio_overrides=merged_ratios(ratio)).recover()
             return run(pipe.distill(epochs=distill_epochs, loss=distill_loss).quantize())
 
         distilled = _attempt(

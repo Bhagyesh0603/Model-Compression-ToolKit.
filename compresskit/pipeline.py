@@ -24,7 +24,7 @@ from .core.benchmark import Measurement, compression_score, efficiency_score, me
 from .core.export import count_parameters, to_onnx
 from .distillation import DistillConfig, distill
 from .pruning import PruneConfig, StructuredPruner, classifier_layers, recalibrate_bn
-from .quantization import QuantConfig, QuantResult, quantize
+from .quantization import QATConfig, QuantConfig, QuantResult, qat, quantize
 
 
 @dataclass
@@ -164,6 +164,10 @@ class Pipeline:
         self.stages.append(Stage("distill", {"epochs": epochs, "loss": loss, **kwargs}))
         return self
 
+    def qat(self, epochs: int = 3, **kwargs):
+        self.stages.append(Stage("qat", {"epochs": epochs, **kwargs}))
+        return self
+
     def quantize(self, precision: str = "auto", **kwargs):
         self.stages.append(Stage("quantize", {"precision": precision, **kwargs}))
         return self
@@ -265,6 +269,20 @@ class Pipeline:
                 distill(self.model, self.original, train_data, config)
                 measurement = self._measure(
                     name, self.model, notes=f"{config.loss} distillation, {config.epochs} epochs"
+                )
+
+            elif stage.kind == "qat":
+                options = dict(stage.options)
+                explicit_loader = options.pop("loader", None)
+                train_data = explicit_loader if explicit_loader is not None else self.train_loader
+                if train_data is None:
+                    raise ValueError(
+                        "QAT needs training data — pass train_loader= to Pipeline() or loader= to .qat()"
+                    )
+                config = QATConfig(**options)
+                qat(self.model, train_data, config)
+                measurement = self._measure(
+                    name, self.model, notes=f"QAT, {config.epochs} epochs, {config.bits}-bit"
                 )
 
             elif stage.kind == "quantize":
