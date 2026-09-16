@@ -6,6 +6,7 @@ and `compresskit.sensitivity` for those.
 """
 
 from .benchmark import (
+    ClassMetrics,
     Latency,
     Measurement,
     accuracy_onnx,
@@ -13,6 +14,7 @@ from .benchmark import (
     benchmark,
     compression_score,
     efficiency_score,
+    evaluate_onnx,
     make_session,
     measure,
 )
@@ -20,6 +22,7 @@ from .export import count_parameters, layer_node_map, size_mb, to_onnx, torch_na
 from .host import HostContext, probe, training_device
 
 __all__ = [
+    "ClassMetrics",
     "HostContext",
     "Latency",
     "Measurement",
@@ -29,6 +32,7 @@ __all__ = [
     "compression_score",
     "count_parameters",
     "efficiency_score",
+    "evaluate_onnx",
     "layer_node_map",
     "make_session",
     "measure",

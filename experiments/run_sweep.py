@@ -24,10 +24,11 @@ from compresskit.core.host import probe  # noqa: E402
 from compresskit.pipeline import Pipeline  # noqa: E402
 from compresskit.report import render_sweep  # noqa: E402
 from compresskit.sensitivity import analyze  # noqa: E402
-from compresskit.zoo.data import calibration_loader, test_loader, train_loader  # noqa: E402
+from compresskit.zoo.data import CIFAR10_CLASSES, calibration_loader, test_loader, train_loader  # noqa: E402
 from compresskit.zoo.train import load_model  # noqa: E402
 
 FIELDS = ["config", "ratio", "precision", "distill_epochs", "top1", "drop_pp",
+          "macro_precision", "macro_recall", "macro_f1",
           "median_ms", "p95_ms", "speedup", "size_mb", "params", "efficiency"]
 
 
@@ -81,12 +82,20 @@ def main(argv=None) -> int:
             final = result.final
 
             print(f"    {final.summary()}")
+            if final.class_metrics is not None:
+                print(f"    macro P {final.class_metrics.macro_precision:.4f}  "
+                      f"R {final.class_metrics.macro_recall:.4f}  "
+                      f"F1 {final.class_metrics.macro_f1:.4f}")
             rows.append({"label": label, "measurement": final})
+            metrics = final.class_metrics
             csv_rows.append({
                 "config": label, "ratio": ratio, "precision": final.precision,
                 "distill_epochs": args.distill,
                 "top1": round(final.accuracy * 100, 3),
                 "drop_pp": round((baseline.accuracy - final.accuracy) * 100, 3),
+                "macro_precision": round(metrics.macro_precision, 4) if metrics else "",
+                "macro_recall": round(metrics.macro_recall, 4) if metrics else "",
+                "macro_f1": round(metrics.macro_f1, 4) if metrics else "",
                 "median_ms": round(final.latency.median_ms, 4),
                 "p95_ms": round(final.latency.p95_ms, 4),
                 "speedup": round(baseline.latency.median_ms / final.latency.median_ms, 3),
@@ -108,6 +117,13 @@ def main(argv=None) -> int:
     print(f"\n{len(csv_rows)} configs in {(time.perf_counter() - started) / 60:.1f} min")
     print(f"best by efficiency: {best['config']} — {best['top1']:.2f}% top-1, "
           f"{best['speedup']:.2f}x faster, {best['size_mb']:.2f} MB")
+
+    # Per-class breakdown for the winner: a uniform top-1 drop and one class
+    # collapsing look identical in the aggregate, and only this tells them apart.
+    winner = next(r["measurement"] for r in rows if r["label"] == best["config"])
+    if winner.class_metrics is not None:
+        print(f"\nper-class breakdown — {best['config']}:")
+        print(winner.class_metrics.summary(class_names=list(CIFAR10_CLASSES)))
     print(f"csv    -> {csv_path}")
     print(f"report -> {html_path}")
     return 0

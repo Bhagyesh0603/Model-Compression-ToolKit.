@@ -4,7 +4,17 @@ import pytest
 import torch
 import torch.nn as nn
 
-from compresskit.core.benchmark import Latency, Measurement, benchmark, compression_score, efficiency_score
+from compresskit.core.benchmark import (
+    ClassMetrics,
+    Latency,
+    Measurement,
+    accuracy_onnx,
+    benchmark,
+    compression_score,
+    efficiency_score,
+    evaluate_onnx,
+    measure,
+)
 from compresskit.core.export import layer_node_map, to_onnx, torch_name_from_onnx_node
 from compresskit.core.host import probe
 from compresskit.distillation import DistillConfig, cosine_lr, dkd_loss, kd_loss
@@ -45,10 +55,36 @@ class TestBudget:
             ("accuracy>90%", "min_accuracy", 0.9),
             ("size<2mb", "max_size_mb", 2.0),
             ("size<1gb", "max_size_mb", 1024.0),
+            ("size<500kb", "max_size_mb", 500 / 1024),
         ],
     )
     def test_parses_units(self, spec, field, expected):
         assert getattr(Budget.parse(spec), field) == pytest.approx(expected)
+
+    @pytest.mark.parametrize("spec", ["size<1gbfoo", "accuracy_drop<1ppm", "latency<5mistake"])
+    def test_rejects_unrecognised_units_rather_than_dropping_them(self, spec):
+        """An unknown unit used to fall out of the optional group silently, so
+        'size<500kb' parsed as 500 MB — a 1024x more permissive budget than
+        asked for, reported as met."""
+        with pytest.raises(ValueError, match="could not parse"):
+            Budget.parse(spec)
+
+    def test_a_key_must_be_its_own_word(self):
+        """Unanchored, 'latency' matched as a substring of any longer word,
+        so a typo produced a confidently-wrong budget instead of an error."""
+        with pytest.raises(ValueError, match="could not parse"):
+            Budget.parse("somelatency<50ms")
+
+    def test_rejects_conflicting_duplicate_keys(self):
+        """Keeping whichever term matched last would discard half the
+        caller's intent with no trace."""
+        with pytest.raises(ValueError, match="conflicting"):
+            Budget.parse("latency<50ms, latency<10ms")
+
+    def test_allows_redundant_but_identical_duplicates(self):
+        """Same constraint expressed twice in different units is consistent,
+        not ambiguous — no reason to reject it."""
+        assert Budget.parse("size<1gb, size<1024mb").max_size_mb == pytest.approx(1024.0)
 
     def test_parses_compound_spec(self):
         budget = Budget.parse("latency<1ms, accuracy_drop<1%, size<0.5mb")
@@ -539,3 +575,83 @@ class TestExportAndMeasure:
         assert latency.median_ms > 0
         assert latency.p95_ms >= latency.median_ms
         assert latency.runs == 15 and latency.threads == 1
+
+
+class TestClassMetrics:
+    """Top-1 hides *which* class a compressed model lost; these are the numbers
+    that expose it, so their arithmetic has to be exactly right."""
+
+    def test_perfect_classifier_scores_one_everywhere(self):
+        metrics = ClassMetrics(confusion=[[5, 0, 0], [0, 5, 0], [0, 0, 5]])
+        assert metrics.accuracy == 1.0
+        assert metrics.macro_precision == 1.0
+        assert metrics.macro_recall == 1.0
+        assert metrics.macro_f1 == 1.0
+        assert metrics.partial is False
+
+    def test_derives_precision_recall_f1_from_confusion(self):
+        # rows = true class, columns = prediction; 5 samples per class.
+        metrics = ClassMetrics(confusion=[[4, 1, 0], [2, 3, 0], [0, 0, 5]])
+
+        assert metrics.total == 15
+        assert metrics.accuracy == pytest.approx(12 / 15)
+        assert metrics.support == [5, 5, 5]
+
+        # class 0 is predicted 6 times (4 correct), class 1 four times (3 correct).
+        assert metrics.precision() == pytest.approx([4 / 6, 3 / 4, 1.0])
+        assert metrics.recall() == pytest.approx([4 / 5, 3 / 5, 1.0])
+        assert metrics.f1() == pytest.approx([0.7272727, 0.6666667, 1.0])
+        assert metrics.macro_precision == pytest.approx((4 / 6 + 3 / 4 + 1.0) / 3)
+        assert metrics.macro_recall == pytest.approx(0.8)
+
+    def test_macro_skips_classes_with_no_samples(self):
+        """A truncated `accuracy_limit` can miss whole classes. Recall is
+        genuinely undefined for a class with zero true samples, so it is
+        excluded from macro recall — but precision only needs a prediction to
+        be defined, so a class that received a false positive still counts
+        toward macro precision even with zero true samples."""
+        metrics = ClassMetrics(confusion=[[3, 1], [0, 0]])
+
+        assert metrics.support == [4, 0]
+        assert metrics.evaluated_classes == [0]
+        assert metrics.partial is True
+        # Class 1 has zero true samples but got one false-positive prediction
+        # (confusion[0][1] == 1), so its precision is a real 0/1 = 0.0 — not
+        # undefined — and belongs in the macro-precision average.
+        assert metrics.precision() == pytest.approx([1.0, 0.0])
+        assert metrics.macro_precision == pytest.approx(0.5)
+        assert metrics.macro_recall == pytest.approx(0.75)
+        assert "had no samples" in metrics.summary()
+
+    def test_macro_precision_counts_false_positives_into_an_unseen_class(self):
+        """A compressed model can mode-collapse predictions into a class the
+        (possibly truncated) eval pass never saw as a true label. That class's
+        precision is real and damaging — it must drag the macro average down,
+        not disappear from it."""
+        metrics = ClassMetrics(confusion=[[7, 0, 3], [0, 8, 2], [0, 0, 0]])
+
+        assert metrics.support == [10, 10, 0]
+        assert metrics.predicted == [7, 8, 5]
+        assert metrics.precision() == pytest.approx([1.0, 1.0, 0.0])
+        assert metrics.macro_precision == pytest.approx(2 / 3)
+
+    def test_empty_evaluation_does_not_divide_by_zero(self):
+        metrics = ClassMetrics(confusion=[])
+        assert metrics.accuracy == 0.0
+        assert metrics.macro_f1 == 0.0
+
+    def test_matches_accuracy_onnx_on_a_real_artifact(self, model, loader, tmp_path):
+        path = to_onnx(model, tmp_path / "m.onnx")
+        metrics = evaluate_onnx(path, loader)
+
+        assert metrics.num_classes == 10
+        assert metrics.total == 64, "every sample in the loader must be counted once"
+        assert metrics.accuracy == pytest.approx(accuracy_onnx(path, loader))
+
+    def test_measure_attaches_class_metrics(self, model, loader, tmp_path):
+        path = to_onnx(model, tmp_path / "m.onnx")
+        m = measure("baseline", path, loader, warmup=2, runs=5)
+
+        assert m.class_metrics is not None
+        assert m.accuracy == pytest.approx(m.class_metrics.accuracy)
+        assert m.as_dict()["class_metrics"]["macro_f1"] == pytest.approx(m.class_metrics.macro_f1)
