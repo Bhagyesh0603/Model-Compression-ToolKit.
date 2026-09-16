@@ -194,6 +194,30 @@ class TestFullRun:
         assert all(p.requires_grad for p in teacher.parameters())
         assert teacher.training
 
+    def test_teacher_is_restored_even_when_the_run_fails_partway_through(self, model, loader):
+        """The happy-path restoration above only proves the normal-completion
+        case works. Without a try/finally around the training loop, a
+        mid-run exception (a flaky on_epoch callback, a bad batch, a
+        KeyboardInterrupt) left the caller's teacher permanently frozen and
+        in eval mode -- the exact outcome `distill`'s own docstring promises
+        never happens."""
+        import copy
+
+        from compresskit.distillation import DistillConfig, distill
+
+        teacher = model
+        student = copy.deepcopy(model)
+        teacher.train()
+
+        def flaky_on_epoch(student, epoch, stats):
+            raise RuntimeError("simulated failure")
+
+        with pytest.raises(RuntimeError, match="simulated failure"):
+            distill(student, teacher, loader, DistillConfig(epochs=2, device="cpu"), on_epoch=flaky_on_epoch)
+
+        assert all(p.requires_grad for p in teacher.parameters())
+        assert teacher.training
+
     def test_pipeline_does_not_mutate_the_input_model(self, model, loader, tmp_path):
         before = model.features[0].out_channels
         Pipeline(model, loader, loader, workdir=tmp_path / "a", warmup=1, runs=4) \

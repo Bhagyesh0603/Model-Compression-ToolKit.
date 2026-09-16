@@ -150,67 +150,74 @@ def distill(
     for param in teacher.parameters():
         param.requires_grad_(False)
 
-    optimizer = torch.optim.SGD(
-        student.parameters(),
-        lr=config.lr,
-        momentum=config.momentum,
-        weight_decay=config.weight_decay,
-        nesterov=True,
-    )
+    # Everything from here on can raise -- a bad batch, a NaN assertion, an
+    # `on_epoch` callback that fails to checkpoint, a KeyboardInterrupt. The
+    # teacher is borrowed, not owned, so restoring it must not depend on the
+    # loop finishing normally: without the try/finally, any exception here
+    # left the caller's teacher permanently frozen and in eval mode, exactly
+    # the failure mode this function's contract exists to rule out.
+    try:
+        optimizer = torch.optim.SGD(
+            student.parameters(),
+            lr=config.lr,
+            momentum=config.momentum,
+            weight_decay=config.weight_decay,
+            nesterov=True,
+        )
 
-    batches = len(loader)
-    for epoch in range(config.epochs):
-        totals = {"loss": 0.0, "ce": 0.0, "kd": 0.0, "correct": 0, "seen": 0}
+        batches = len(loader)
+        for epoch in range(config.epochs):
+            totals = {"loss": 0.0, "ce": 0.0, "kd": 0.0, "correct": 0, "seen": 0}
 
-        for index, (images, targets) in enumerate(loader):
-            for group in optimizer.param_groups:
-                group["lr"] = cosine_lr(
-                    config.lr, epoch + index / max(batches, 1), config.epochs, config.warmup_epochs
-                )
+            for index, (images, targets) in enumerate(loader):
+                for group in optimizer.param_groups:
+                    group["lr"] = cosine_lr(
+                        config.lr, epoch + index / max(batches, 1), config.epochs, config.warmup_epochs
+                    )
 
-            images, targets = images.to(device), targets.to(device)
+                images, targets = images.to(device), targets.to(device)
 
-            with torch.no_grad():
-                teacher_logits = teacher(images)
-            student_logits = student(images)
+                with torch.no_grad():
+                    teacher_logits = teacher(images)
+                student_logits = student(images)
 
-            ce = F.cross_entropy(student_logits, targets)
-            if config.loss == "kd":
-                soft = kd_loss(student_logits, teacher_logits, config.temperature)
-                loss = (1.0 - config.alpha) * ce + config.alpha * soft
-            else:
-                soft = dkd_loss(
-                    student_logits, teacher_logits, targets, config.temperature, config.alpha, config.beta
-                )
-                loss = config.ce_weight * ce + soft
+                ce = F.cross_entropy(student_logits, targets)
+                if config.loss == "kd":
+                    soft = kd_loss(student_logits, teacher_logits, config.temperature)
+                    loss = (1.0 - config.alpha) * ce + config.alpha * soft
+                else:
+                    soft = dkd_loss(
+                        student_logits, teacher_logits, targets, config.temperature, config.alpha, config.beta
+                    )
+                    loss = config.ce_weight * ce + soft
 
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            if config.grad_clip:
-                nn.utils.clip_grad_norm_(student.parameters(), config.grad_clip)
-            optimizer.step()
+                optimizer.zero_grad(set_to_none=True)
+                loss.backward()
+                if config.grad_clip:
+                    nn.utils.clip_grad_norm_(student.parameters(), config.grad_clip)
+                optimizer.step()
 
-            count = targets.size(0)
-            totals["loss"] += loss.item() * count
-            totals["ce"] += ce.item() * count
-            totals["kd"] += soft.item() * count
-            totals["correct"] += int((student_logits.argmax(1) == targets).sum())
-            totals["seen"] += count
+                count = targets.size(0)
+                totals["loss"] += loss.item() * count
+                totals["ce"] += ce.item() * count
+                totals["kd"] += soft.item() * count
+                totals["correct"] += int((student_logits.argmax(1) == targets).sum())
+                totals["seen"] += count
 
-        seen = max(totals["seen"], 1)
-        stats = {
-            "epoch": epoch,
-            "loss": totals["loss"] / seen,
-            "ce": totals["ce"] / seen,
-            "kd": totals["kd"] / seen,
-            "train_acc": totals["correct"] / seen,
-            "lr": optimizer.param_groups[0]["lr"],
-        }
-        if on_epoch is not None:
-            on_epoch(student, epoch, stats)
-
-    for param, required in zip(teacher.parameters(), teacher_grads):
-        param.requires_grad_(required)
-    teacher.train(teacher_was_training)
+            seen = max(totals["seen"], 1)
+            stats = {
+                "epoch": epoch,
+                "loss": totals["loss"] / seen,
+                "ce": totals["ce"] / seen,
+                "kd": totals["kd"] / seen,
+                "train_acc": totals["correct"] / seen,
+                "lr": optimizer.param_groups[0]["lr"],
+            }
+            if on_epoch is not None:
+                on_epoch(student, epoch, stats)
+    finally:
+        for param, required in zip(teacher.parameters(), teacher_grads):
+            param.requires_grad_(required)
+        teacher.train(teacher_was_training)
 
     return student.cpu().eval()
