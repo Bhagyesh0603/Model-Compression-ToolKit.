@@ -14,3 +14,11 @@ artifacts/
 
 .DS_Store
 .pytest_cache/
+
+# Research paper drafts and the tooling that generates them — working files
+# for the paper, not part of the toolkit itself.
+Literature_Survey_IEEE.md
+Proposed_System.md
+Research_Paper_Draft.md
+Research_Paper_IEEE.docx
+build_paper_docx.py
