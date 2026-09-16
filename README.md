@@ -50,9 +50,13 @@ result = ck.compress(
 print(result.summary())
 ```
 
-It tries quantization alone first, adds sensitivity-guided pruning only if that
-misses the latency target, and adds distillation only if accuracy is what's
-failing. It stops at the first configuration that fits.
+It tries quantization alone first. If only accuracy is short, it tries a brief
+QAT (quantization-aware training) recovery pass before anything more
+expensive. If latency or size is still short, it adds pruning — guided by
+*two* measured signals, not FLOPs: per-layer sensitivity (which layers carry
+the most signal) and per-group measured latency impact (which layers actually
+cost speed when removed) — and only adds distillation if accuracy is still
+the gap after that. It stops at the first configuration that fits.
 
 ### Tier 2 — drive the stages yourself
 
@@ -66,6 +70,10 @@ result = (
     .run()
 )
 ```
+
+`.qat(epochs=3)` is also available as a stage — a cheaper alternative to
+`.distill()` right before `.quantize()` when the only problem is quantization
+rounding error, not general accuracy loss from pruning.
 
 ### Tier 3 — per-layer overrides, once the report names a layer
 
@@ -94,18 +102,26 @@ compresskit bench model.onnx            # time an existing artifact
 CPU probe ──────────────────────────────► gates the precision choice
      │
      ▼
-prune ──────► BN recover ──────► distill ──────► quantize
-DepGraph      reset + recompute  teacher =       ORT static INT8/FP16
-L1 magnitude  forward-only       the ORIGINAL    QDQ, per-channel
-SIMD-aligned  no backprop        model           always last
-     │              │                │               │
-     └──────────────┴────────────────┴───────────────┘
+prune ──────► BN recover ──────► distill ──────► QAT ──────► quantize
+DepGraph      reset + recompute  teacher =       simulated    ORT static INT8/FP16
+L1 magnitude  forward-only       the ORIGINAL    rounding,    QDQ, per-channel
+or measured   no backprop        model           STE grad     always last
+latency-guided     │                │                │              │
+     │              │                │                │              │
+     └──────────────┴────────────────┴────────────────┴──────────────┘
                           │
               measurement harness — every stage
               latency (median + p95, batch 1, 1 thread)
               accuracy (top-1 of the ONNX artifact)
               size (actual bytes on disk)
 ```
+
+**QAT (quantization-aware training)** is the cheap first fallback when plain
+quantization alone misses the accuracy budget: a short retrain with the
+rounding error simulated in the forward pass (via a straight-through
+estimator, since `.round()` has no gradient) so the weights compensate for it
+before the final quantize. It only escalates to full pruning + distillation
+if QAT alone isn't enough.
 
 **Structured, not unstructured pruning.** Zeroing individual weights leaves the
 tensor the same size; no maintained CPU runtime turns that sparsity into speed.
@@ -152,8 +168,10 @@ compresskit/
   pruning/            TECHNIQUE: structured channel pruning
     prune.py            Torch-Pruning DepGraph wrapper: L1 magnitude, SIMD alignment
     recover.py           batch-norm re-estimation
+    latency_guide.py      per-group ranking by measured latency impact, not FLOPs
   quantization/        TECHNIQUE: INT8/FP16 quantization
     quantize.py          ORT static INT8 / FP16, op-coverage reporting
+    qat.py                quantization-aware training fallback (STE fake-quant)
   distillation/         TECHNIQUE: knowledge distillation
     distill.py            KD and Decoupled-KD losses, teacher = original model
   sensitivity/          TECHNIQUE: per-layer sensitivity analysis
