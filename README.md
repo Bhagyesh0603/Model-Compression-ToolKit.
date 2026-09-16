@@ -20,8 +20,11 @@ of each to apply, and that tells you the truth about what you got:
 - **FLOPs are not latency.** Two models with identical FLOPs routinely differ 2×
   in wall-clock. Every number here comes from a stopwatch on this host.
 - **"Accuracy dropped" is not a diagnosis.** Per-layer sensitivity analysis names
-  the specific layers responsible, and that ranking drives both the quantization
-  exclusions and the per-layer pruning ratios.
+  the specific layers responsible. The budget search automatically uses that
+  ranking to prune fragile layers less than robust ones; the same ranking can
+  also name layers to keep in float32 during quantization, one call away
+  (`report.exclude_nodes(...)`, see Tier 3 below) but not yet wired into the
+  automated search itself.
 - **Most models don't need the whole pipeline.** The budget search stops at the
   cheapest stage that meets your target instead of always running everything.
 
