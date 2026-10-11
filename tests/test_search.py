@@ -3,9 +3,28 @@
 import pytest
 import torch.nn as nn
 
+from compresskit.core import host as host_mod
+from compresskit.core.host import HostContext
 from compresskit.search import _new_warnings, _warning_key, compress
 
 FAST = dict(search_runs=4, search_accuracy_limit=64, ratio_steps=1, distill_epochs=1, verbose=False)
+
+
+def _host(features: frozenset[str]) -> HostContext:
+    return HostContext(system="Linux", machine="x86_64", cpu="Fake CPU", logical_cores=4,
+                       performance_cores=4, features=features, versions={})
+
+
+@pytest.fixture
+def fast_int8_host(monkeypatch):
+    """Pins the host so quantize-only produces INT8 regardless of the machine running the tests."""
+    monkeypatch.setattr(host_mod, "probe", lambda: _host(frozenset({"avx512_vnni"})))
+
+
+@pytest.fixture
+def no_int8_host(monkeypatch):
+    """Pins a host where 'auto' precision resolves to fp16, not INT8."""
+    monkeypatch.setattr(host_mod, "probe", lambda: _host(frozenset({"avx2"})))
 
 
 class TestEscalation:
@@ -34,7 +53,9 @@ class TestEscalation:
             (i for i, l in enumerate(labels) if "prune@" in l), len(labels)
         ), "QAT should be tried before pruning, not after"
 
-    def test_tries_mixed_precision_before_qat_when_only_accuracy_is_short(self, model, loader, tmp_path):
+    def test_tries_mixed_precision_before_qat_when_only_accuracy_is_short(
+        self, model, loader, tmp_path, fast_int8_host
+    ):
         result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
                           train_loader=loader, workdir=tmp_path / "s", **FAST)
         labels = [a.label for a in result.attempts]
@@ -42,12 +63,24 @@ class TestEscalation:
         assert labels.index("mixed-precision") < labels.index("qat+quantize")
         mixed = result.attempts[1]
         assert len(mixed.config["keep_float"]) == 2
-        assert mixed.result.quantization.unquantized_ops, "the kept layers must actually stay float32"
+        # Strictly more float32 compute than quantize-only, so the exclusions
+        # demonstrably took effect rather than merely being non-empty.
+        assert sum(mixed.result.quantization.unquantized_ops.values()) > sum(
+            result.attempts[0].result.quantization.unquantized_ops.values()
+        ), "the kept layers must actually stay float32"
         assert result.sensitivity is not None
 
-    def test_keep_float_zero_skips_mixed_precision(self, model, loader, tmp_path):
+    def test_keep_float_zero_skips_mixed_precision(self, model, loader, tmp_path, fast_int8_host):
         result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
                           train_loader=loader, workdir=tmp_path / "s", keep_float=0, **FAST)
+        assert "mixed-precision" not in [a.label for a in result.attempts]
+
+    def test_no_mixed_precision_when_quantize_only_is_not_int8(self, model, loader, tmp_path, no_int8_host):
+        """Exclusions only act on the INT8 path. On a host that gets fp16, a
+        'mixed-precision' attempt would be quantize-only relabelled."""
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s", **FAST)
+        assert result.attempts[0].result.quantization.precision != "int8"
         assert "mixed-precision" not in [a.label for a in result.attempts]
 
     def test_escalates_to_pruning_when_latency_is_short(self, model, loader, tmp_path):

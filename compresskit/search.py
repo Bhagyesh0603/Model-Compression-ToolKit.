@@ -397,8 +397,11 @@ def compress(
     # 1.2. Accuracy is the only gap. Keeping the few layers the sensitivity
     #      ranking blames in float32 costs no training at all — cheaper than
     #      QAT, so it is tried first. It may give back some latency, which the
-    #      measurement will show.
-    if accuracy_only and keep_float > 0:
+    #      measurement will show. Only meaningful when quantize-only produced
+    #      INT8: exclusions act on that path alone, so on an fp16/fp32 host this
+    #      attempt would be quantize-only under a label claiming layers were
+    #      kept selectively, at the cost of a full export and benchmark.
+    if accuracy_only and keep_float > 0 and attempt.result.quantization.precision == "int8":
         log("\n[1.2] sensitivity analysis")
         report = analyze(model, calibration_loader, batches=4)
         log("    " + "\n    ".join(report.summary(top=5).splitlines()))
