@@ -3,7 +3,7 @@
 import pytest
 import torch.nn as nn
 
-from compresskit.search import compress
+from compresskit.search import _new_warnings, _warning_key, compress
 
 FAST = dict(search_runs=4, search_accuracy_limit=64, ratio_steps=1, distill_epochs=1, verbose=False)
 
@@ -114,3 +114,38 @@ class TestPruneWarnings:
             "alignment warning"
         )
         assert "!" in result.summary()
+
+    def test_warning_key_masks_ratio_numbers_but_not_layer_names(self):
+        a = "['layer1.2.bn1'] share a connection with a layer overridden to 0.225 — using 0.225"
+        b = "['layer1.2.bn1'] share a connection with a layer overridden to 0.1125 — using 0.1125"
+        c = "['layer3.1.bn1'] share a connection with a layer overridden to 0.225 — using 0.225"
+        assert _warning_key(a) == _warning_key(b), "same issue at a different ratio is one warning"
+        assert _warning_key(a) != _warning_key(c), "a different layer is a different warning"
+
+    def test_new_warnings_returns_each_key_once(self):
+        seen: set[str] = set()
+        first = _new_warnings(["x at 0.5", "y"], seen)
+        second = _new_warnings(["x at 0.25", "y", "z"], seen)
+        assert first == ["x at 0.5", "y"]
+        assert second == ["z"]
+
+    def test_summary_prints_each_repeated_warning_once_and_counts_the_rest(self, loader, tmp_path):
+        narrow = nn.Sequential(
+            nn.Conv2d(3, 16, 3, padding=1, bias=False),
+            nn.BatchNorm2d(16),
+            nn.ReLU(inplace=True),
+            nn.AdaptiveAvgPool2d(1),
+        )
+        model = nn.Sequential(narrow, nn.Flatten(1), nn.Linear(16, 10))
+        result = compress(model, loader, loader, budget="latency<0.00001ms",
+                          workdir=tmp_path / "s", **{**FAST, "ratio_steps": 3})
+
+        all_warnings = [w for a in result.attempts for w in a.prune_warnings]
+        distinct = {_warning_key(w) for w in all_warnings}
+        assert len(all_warnings) > len(distinct), "fixture should produce repeated warnings"
+
+        printed = [line.strip()[2:] for line in result.summary().splitlines() if line.strip().startswith("! ")]
+        assert len(printed) == len(distinct)
+        assert f"{len(all_warnings) - len(distinct)} repeated" in result.summary()
+        # The full list is still available on each attempt: dedup is display-only.
+        assert sum(len(a.prune_warnings) for a in result.attempts) == len(all_warnings)

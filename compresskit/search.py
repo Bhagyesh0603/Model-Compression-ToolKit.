@@ -43,6 +43,31 @@ def _merge_gentlest(overrides_a: dict[str, float], overrides_b: dict[str, float]
         merged[name] = min(merged.get(name, ratio), ratio)
     return merged
 
+
+# A standalone decimal (a ratio, a millisecond figure) — but not the digits
+# inside a layer path like "layer1.2.conv1", which identify *which* layer.
+_STANDALONE_NUMBER = re.compile(r"(?<![\w.])\d+\.\d+")
+
+
+def _warning_key(warning: str) -> str:
+    """What makes two warnings the same issue: identical text once ratio
+    numbers are masked. Every prune trial in a search re-emits the same
+    conflict at a different ratio, and printing each copy buries the one
+    line that is actually new."""
+    return _STANDALONE_NUMBER.sub("#", warning)
+
+
+def _new_warnings(warnings: list[str], seen: set[str]) -> list[str]:
+    """The warnings whose key hasn't been shown yet; records them as shown."""
+    fresh = []
+    for warning in warnings:
+        key = _warning_key(warning)
+        if key not in seen:
+            seen.add(key)
+            fresh.append(warning)
+    return fresh
+
+
 _BUDGET_TERM = re.compile(
     r"\b(?P<key>latency|accuracy_drop|accuracy|size)\s*(?P<op>[<>]=?)\s*(?P<value>[\d.]+)\s*"
     r"(?P<unit>kb|mb|gb|ms|s|pp|%)?(?!\w)",
@@ -208,6 +233,8 @@ class SearchResult:
 
     def summary(self) -> str:
         lines = [f"budget: {self.budget.describe()}", ""]
+        seen: set[str] = set()
+        hidden = 0
         for attempt in self.attempts:
             mark = "MET " if attempt.met else "MISS"
             lines.append(f"[{mark}] {attempt.label:<28} {attempt.plan}")
@@ -215,9 +242,16 @@ class SearchResult:
             lines.append(f"        efficiency {attempt.score:.4f}")
             for failure in attempt.failures:
                 lines.append(f"        - {failure}")
-            for warning in attempt.prune_warnings:
+            fresh = _new_warnings(attempt.prune_warnings, seen)
+            hidden += len(attempt.prune_warnings) - len(fresh)
+            for warning in fresh:
                 lines.append(f"        ! {warning}")
         lines.append("")
+        if hidden:
+            lines.append(
+                f"({hidden} repeated pruning warning(s) hidden — the same issue at a different "
+                "ratio; every attempt's full list is in Attempt.prune_warnings)"
+            )
         if self.chosen is None:
             lines.append("no candidate produced — nothing ran")
         elif self.met:
@@ -275,8 +309,9 @@ def compress(
         # Pipeline runs with verbose=False during search, so a pruning
         # attempt's own alignment/ratio-conflict warnings never print unless
         # repeated here — and they mean the ratio label on this attempt may
-        # not be what actually got applied.
-        for warning in candidate.prune_warnings:
+        # not be what actually got applied. Repeats of an already-shown
+        # warning are suppressed here because the final summary counts them.
+        for warning in _new_warnings(candidate.prune_warnings, shown_warnings):
             log(f"    ! {warning}")
 
     def pipeline(name: str, full: bool = False) -> Pipeline:
@@ -308,6 +343,7 @@ def compress(
     log(f"budget: {budget.describe()}")
 
     attempts: list[Attempt] = []
+    shown_warnings: set[str] = set()
 
     # 1. Quantization alone — no retraining, no architecture change.
     log("\n[1] quantize only")
