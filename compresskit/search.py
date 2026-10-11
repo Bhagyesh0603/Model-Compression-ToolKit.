@@ -5,9 +5,10 @@ You declare what you need ("latency<2ms, accuracy_drop<1%") and this finds the
 falls short:
 
 1. **Quantize only.** Cheapest, lowest risk, no retraining. Often enough.
-   If only accuracy is short, two cheaper-than-pruning fallbacks come first:
-   **mixed precision** (keep the most sensitive layers in float32, no
-   training), then **QAT** (a brief quantization-aware recovery pass).
+   If only accuracy is short, the search tries **mixed precision** (keep the
+   most sensitive layers in float32, no training; INT8 hosts only), then
+   **QAT** (a brief recovery pass; needs training data), then distillation.
+   Pruning is reserved for latency or size misses.
 2. **Add pruning**, binary-searching the ratio against the latency budget and
    using the sensitivity ranking to prune fragile layers less than robust ones.
 3. **Add distillation**, but only if accuracy is what is failing — its entire

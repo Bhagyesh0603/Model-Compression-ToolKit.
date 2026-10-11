@@ -117,12 +117,13 @@ latency-guided     │                │                │              │
               size (actual bytes on disk)
 ```
 
-**QAT (quantization-aware training)** is the cheap first fallback when plain
-quantization alone misses the accuracy budget: a short retrain with the
-rounding error simulated in the forward pass (via a straight-through
-estimator, since `.round()` has no gradient) so the weights compensate for it
-before the final quantize. It only escalates to full pruning + distillation
-if QAT alone isn't enough.
+**QAT (quantization-aware training)** is the second fallback when plain
+quantization alone misses only the accuracy budget, tried after keeping the
+sensitive layers in float32: a short retrain with the rounding error simulated
+in the forward pass (via a straight-through estimator, since `.round()` has no
+gradient) so the weights compensate for it before the final quantize. If
+accuracy is still short after QAT, the search tries distillation; pruning only
+enters when latency or size is what's failing.
 
 **Structured, not unstructured pruning.** Zeroing individual weights leaves the
 tensor the same size; no maintained CPU runtime turns that sparsity into speed.
