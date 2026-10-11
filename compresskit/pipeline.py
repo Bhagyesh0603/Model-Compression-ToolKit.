@@ -21,7 +21,7 @@ import torch.nn as nn
 
 from .core import host as host_mod
 from .core.benchmark import Measurement, compression_score, efficiency_score, measure
-from .core.export import count_parameters, to_onnx
+from .core.export import count_parameters, nodes_for_layers, to_onnx
 from .distillation import DistillConfig, distill
 from .pruning import PruneConfig, StructuredPruner, classifier_layers, recalibrate_bn
 from .quantization import QATConfig, QuantConfig, QuantResult, qat, quantize
@@ -287,11 +287,21 @@ class Pipeline:
 
             elif stage.kind == "quantize":
                 source = to_onnx(self.model, self.workdir / f"{name}_fp32.onnx", self.input_shape)
+                options = dict(stage.options)
+                # Layer names are what callers (and the sensitivity ranking)
+                # know; node names only exist once this exact graph is
+                # exported, so the mapping has to happen here, per run.
+                exclude_layers = options.pop("exclude_layers", None)
+                if exclude_layers:
+                    options["exclude_nodes"] = [
+                        *options.get("exclude_nodes", []),
+                        *nodes_for_layers(source, exclude_layers),
+                    ]
                 quant_result = quantize(
                     source,
                     self.workdir / f"{name}.onnx",
                     self.calibration_loader,
-                    QuantConfig(**stage.options),
+                    QuantConfig(**options),
                 )
                 warnings.extend(quant_result.warnings)
                 log(f"  {quant_result.summary()}")

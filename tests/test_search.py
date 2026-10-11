@@ -34,6 +34,22 @@ class TestEscalation:
             (i for i, l in enumerate(labels) if "prune@" in l), len(labels)
         ), "QAT should be tried before pruning, not after"
 
+    def test_tries_mixed_precision_before_qat_when_only_accuracy_is_short(self, model, loader, tmp_path):
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s", **FAST)
+        labels = [a.label for a in result.attempts]
+        assert labels[:2] == ["quantize-only", "mixed-precision"]
+        assert labels.index("mixed-precision") < labels.index("qat+quantize")
+        mixed = result.attempts[1]
+        assert len(mixed.config["keep_float"]) == 2
+        assert mixed.result.quantization.unquantized_ops, "the kept layers must actually stay float32"
+        assert result.sensitivity is not None
+
+    def test_keep_float_zero_skips_mixed_precision(self, model, loader, tmp_path):
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s", keep_float=0, **FAST)
+        assert "mixed-precision" not in [a.label for a in result.attempts]
+
     def test_escalates_to_pruning_when_latency_is_short(self, model, loader, tmp_path):
         result = compress(model, loader, loader, budget="latency<0.00001ms",
                           workdir=tmp_path / "s", **FAST)

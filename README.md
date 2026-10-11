@@ -21,10 +21,10 @@ of each to apply, and that tells you the truth about what you got:
   in wall-clock. Every number here comes from a stopwatch on this host.
 - **"Accuracy dropped" is not a diagnosis.** Per-layer sensitivity analysis names
   the specific layers responsible. The budget search automatically uses that
-  ranking to prune fragile layers less than robust ones; the same ranking can
-  also name layers to keep in float32 during quantization, one call away
-  (`report.exclude_nodes(...)`, see Tier 3 below) but not yet wired into the
-  automated search itself.
+  ranking to prune fragile layers less than robust ones; the same ranking also
+  picks which layers the search keeps in float32 when quantization alone misses
+  only on accuracy (`keep_float=`), and you can do the same by hand with
+  `report.exclude_nodes(...)` (see Tier 3).
 - **Most models don't need the whole pipeline.** The budget search stops at the
   cheapest stage that meets your target instead of always running everything.
 
@@ -50,8 +50,9 @@ result = ck.compress(
 print(result.summary())
 ```
 
-It tries quantization alone first. If only accuracy is short, it tries a brief
-QAT (quantization-aware training) recovery pass before anything more
+It tries quantization alone first. If only accuracy is short, it first keeps the
+most sensitive layers in float32 (no training), then tries a brief QAT
+(quantization-aware training) recovery pass before anything more
 expensive. If latency or size is still short, it adds pruning — guided by
 *two* measured signals, not FLOPs: per-layer sensitivity (which layers carry
 the most signal) and per-group measured latency impact (which layers actually

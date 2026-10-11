@@ -319,3 +319,18 @@ class TestReportRendering:
         # Must not raise, and must produce a finite (if huge) rendered report.
         html = render(result, tmp_path / "report.html").read_text()
         assert "inf" not in html.lower().replace("info", "")
+
+
+class TestExcludeLayers:
+    def test_named_layer_stays_float32(self, model, loader, tmp_path):
+        result = (Pipeline(model, loader, loader, workdir=tmp_path, runs=4, warmup=1)
+                  .quantize(precision="int8", exclude_layers=["features.0"], allow_slow_int8=True)
+                  .run(verbose=False))
+        assert result.quantization.unquantized_ops.get("Conv", 0) >= 1
+
+    def test_unknown_layer_is_an_error_not_a_silent_no_op(self, model, loader, tmp_path):
+        pipe = Pipeline(model, loader, loader, workdir=tmp_path, runs=4, warmup=1)
+        with pytest.raises(KeyError, match="no_such_layer"):
+            pipe.quantize(
+                precision="int8", exclude_layers=["no_such_layer"], allow_slow_int8=True
+            ).run(verbose=False)

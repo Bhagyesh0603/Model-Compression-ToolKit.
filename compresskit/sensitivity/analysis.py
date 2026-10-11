@@ -18,7 +18,7 @@ from dataclasses import dataclass
 import torch
 import torch.nn as nn
 
-from ..core.export import layer_node_map
+from ..core.export import nodes_for_layers
 
 QUANTIZABLE = (nn.Conv2d, nn.Linear, nn.ConvTranspose2d)
 
@@ -72,21 +72,7 @@ class SensitivityReport:
         Feed straight into ``QuantConfig.exclude_nodes`` to keep those layers in
         float while everything else goes to INT8.
         """
-        mapping = layer_node_map(onnx_path)
-        nodes: list[str] = []
-        for name in self.most_sensitive(k):
-            found = mapping.get(name)
-            if not found:
-                # Returning [] here would hand the quantizer an empty exclusion
-                # list, which it treats as "exclude nothing" — the protection
-                # would silently not happen and the accuracy loss would look
-                # inexplicable.
-                raise KeyError(
-                    f"layer {name!r} has no matching node in {onnx_path}; "
-                    f"known layers: {sorted(mapping)[:8]}"
-                )
-            nodes.extend(found)
-        return nodes
+        return nodes_for_layers(onnx_path, self.most_sensitive(k))
 
     def prune_ratios(self, base_ratio: float, protect: int = 2, protect_scale: float = 0.5) -> dict[str, float]:
         """Per-layer pruning ratios that prune sensitive layers less.

@@ -93,6 +93,25 @@ def layer_node_map(path: str | Path, op_types=("Conv", "Gemm", "MatMul", "ConvTr
     return mapping
 
 
+def nodes_for_layers(path: str | Path, layers: list[str]) -> list[str]:
+    """ONNX node names for the given torch layer paths.
+
+    Raises rather than returning a short list: the quantizer treats a missing
+    exclusion as "quantize it anyway", so a typo would silently remove the
+    protection the caller asked for.
+    """
+    mapping = layer_node_map(path)
+    nodes: list[str] = []
+    for name in layers:
+        found = mapping.get(name)
+        if not found:
+            raise KeyError(
+                f"layer {name!r} has no matching node in {path}; known layers: {sorted(mapping)[:8]}"
+            )
+        nodes.extend(found)
+    return nodes
+
+
 def size_mb(path: str | Path) -> float:
     """Actual bytes on disk — never an estimate from parameter counts."""
     return Path(path).stat().st_size / (1024 * 1024)

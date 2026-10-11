@@ -5,6 +5,9 @@ You declare what you need ("latency<2ms, accuracy_drop<1%") and this finds the
 falls short:
 
 1. **Quantize only.** Cheapest, lowest risk, no retraining. Often enough.
+   If only accuracy is short, two cheaper-than-pruning fallbacks come first:
+   **mixed precision** (keep the most sensitive layers in float32, no
+   training), then **QAT** (a brief quantization-aware recovery pass).
 2. **Add pruning**, binary-searching the ratio against the latency budget and
    using the sensitivity ranking to prune fragile layers less than robust ones.
 3. **Add distillation**, but only if accuracy is what is failing — its entire
@@ -311,6 +314,7 @@ def compress(
     distill_epochs: int = 10,
     distill_loss: str = "dkd",
     qat_epochs: int = 3,
+    keep_float: int = 2,
     ratio_steps: int = 4,
     search_runs: int = 60,
     search_accuracy_limit: int | None = 2000,
@@ -321,6 +325,10 @@ def compress(
     During the search, accuracy is measured on a subset and latency on fewer runs
     to keep the loop affordable; the chosen configuration is then re-measured in
     full so the reported numbers are never the cheap estimates.
+
+    `keep_float` is how many of the most sensitive layers the mixed-precision
+    step keeps in float32 when accuracy is the only thing quantization misses;
+    `0` disables that step.
     """
     budget = Budget.parse(budget) if isinstance(budget, str) else budget
     workdir = Path(workdir)
@@ -381,12 +389,40 @@ def compress(
     for failure in attempt.failures:
         log(f"    - {failure}")
 
+    report: SensitivityReport | None = None
+    accuracy_only = budget.accuracy_failed(
+        attempt.result.baseline, attempt.result.final
+    ) and not budget.latency_failed(attempt.result.baseline, attempt.result.final)
+
+    # 1.2. Accuracy is the only gap. Keeping the few layers the sensitivity
+    #      ranking blames in float32 costs no training at all — cheaper than
+    #      QAT, so it is tried first. It may give back some latency, which the
+    #      measurement will show.
+    if accuracy_only and keep_float > 0:
+        log("\n[1.2] sensitivity analysis")
+        report = analyze(model, calibration_loader, batches=4)
+        log("    " + "\n    ".join(report.summary(top=5).splitlines()))
+        kept = report.most_sensitive(keep_float)
+        log(f"\n[1.3] mixed precision — keeping {kept} in float32")
+        mixed = _attempt(
+            "mixed-precision",
+            f"quantize (keep {len(kept)} most sensitive in fp32)",
+            lambda: run(pipeline("mixed").quantize(exclude_layers=kept)),
+            budget,
+            config={"keep_float": kept},
+        )
+        attempts.append(mixed)
+        log(f"    {mixed.result.final.summary()}")
+        if mixed.met:
+            log("    budget met — stopping.")
+            return finalize(mixed, report)
+        for failure in mixed.failures:
+            log(f"    - {failure}")
+
     # 1.5. Quantize-only already hits latency/size but not accuracy — QAT
     #      recovers exactly that loss for less cost than full pruning plus
     #      distillation, so it's worth trying before escalating further.
-    if train_loader is not None and budget.accuracy_failed(
-        attempt.result.baseline, attempt.result.final
-    ) and not budget.latency_failed(attempt.result.baseline, attempt.result.final):
+    if train_loader is not None and accuracy_only:
         log(f"\n[1.5] QAT recovery ({qat_epochs} epochs)")
         qat_attempt = _attempt(
             "qat+quantize",
@@ -399,15 +435,16 @@ def compress(
         log(f"    {qat_attempt.result.final.summary()}")
         if qat_attempt.met:
             log("    budget met — stopping.")
-            return finalize(qat_attempt, None)
+            return finalize(qat_attempt, report)
         for failure in qat_attempt.failures:
             log(f"    - {failure}")
 
     # 2. Add pruning. Which layers to protect comes from measured sensitivity,
     #    not from a uniform ratio applied blindly across depths.
-    log("\n[2] sensitivity analysis")
-    report = analyze(model, calibration_loader, batches=4)
-    log("    " + "\n    ".join(report.summary(top=5).splitlines()))
+    if report is None:
+        log("\n[2] sensitivity analysis")
+        report = analyze(model, calibration_loader, batches=4)
+        log("    " + "\n    ".join(report.summary(top=5).splitlines()))
 
     best_pruned: Attempt | None = None
     hardest_pruned: Attempt | None = None
