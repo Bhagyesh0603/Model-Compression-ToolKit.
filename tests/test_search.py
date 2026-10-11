@@ -155,3 +155,18 @@ class TestPruneWarnings:
         assert f"{len(all_warnings) - len(distinct)} repeated" in result.summary()
         # The full list is still available on each attempt: dedup is display-only.
         assert sum(len(a.prune_warnings) for a in result.attempts) == len(all_warnings)
+
+
+class TestDuplicateArchitectures:
+    def test_no_two_prune_attempts_measure_the_same_architecture(self, model, loader, tmp_path):
+        """Alignment rounding makes neighbouring ratios collapse onto the same
+        network; measuring it twice is pure waste."""
+        result = compress(model, loader, loader, budget="latency<0.00001ms",
+                          workdir=tmp_path / "s", **{**FAST, "ratio_steps": 4})
+
+        pruned = [a for a in result.attempts if "prune@" in a.label and "distill" not in a.label]
+        archs = [tuple(sorted((k, v[1]) for k, v in a.result.prune_stats["channels"].items()))
+                 for a in pruned]
+        assert len(archs) == len(set(archs)), f"re-measured a duplicate architecture: {[a.label for a in pruned]}"
+        assert len(pruned) < 4, "this fixture's later ratios should collapse onto one architecture"
+        assert not result.met and result.chosen is not None, "the skip must not break best-effort selection"

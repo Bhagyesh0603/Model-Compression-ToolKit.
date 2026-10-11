@@ -28,7 +28,7 @@ import torch.nn as nn
 from .core import host as host_mod
 from .core.benchmark import Measurement, efficiency_score, measure
 from .pipeline import Pipeline, PipelineResult
-from .pruning import LatencyGuidedReport, measure_latency_impact
+from .pruning import LatencyGuidedReport, PruneConfig, StructuredPruner, measure_latency_impact
 from .sensitivity import SensitivityReport, analyze
 
 
@@ -279,6 +279,26 @@ def _attempt(label: str, plan: str, build, budget: Budget, config: dict | None =
     )
 
 
+def _pruned_architecture(
+    model: nn.Module, input_shape: tuple[int, ...], ratio: float, align: int,
+    ratio_overrides: dict[str, float],
+) -> tuple[tuple[str, int], ...]:
+    """The network a prune trial would produce, without exporting or timing it.
+
+    SIMD alignment rounds every layer's kept width to a block multiple, so
+    nearby ratios routinely land on the identical network — and the expensive
+    part of a trial is the export, quantize and benchmark, not the pruning.
+    Same pruner, same config and same deterministic magnitude ranking as the
+    Pipeline's prune stage, so the result is exactly what that trial builds.
+    """
+    pruner = StructuredPruner(
+        model, torch.randn(*input_shape),
+        PruneConfig(ratio=ratio, align=align, ratio_overrides=ratio_overrides),
+    )
+    pruner.run()
+    return tuple(sorted((name, after) for name, (_, after) in pruner.stats().channels.items()))
+
+
 def compress(
     model: nn.Module,
     calibration_loader,
@@ -408,28 +428,37 @@ def compress(
         log("    " + "\n    ".join(latency_report.summary(top=5).splitlines()))
 
         low, high = 0.0, 0.9
+        measured: dict[tuple, Attempt] = {}
         for step in range(ratio_steps):
             ratio = round((low + high) / 2, 3)
             label = f"prune@{ratio:.3f}+quantize"
             log(f"\n[2.{step + 1}] prune ratio {ratio:.3f} (binary search)")
-            candidate = _attempt(
-                label,
-                f"prune({ratio:.3f}, align={align}) -> recover -> quantize",
-                lambda r=ratio: run(
-                    pipeline(f"prune_{r:.3f}")
-                    .prune(ratio=r, align=align, ratio_overrides=merged_ratios(r))
-                    .recover()
-                    .quantize()
-                ),
-                budget,
-                config={"ratio": ratio},
-            )
-            attempts.append(candidate)
-            log(f"    {candidate.result.final.summary()}")
-            log_prune_warnings(candidate)
-
-            if hardest_pruned is None or ratio > hardest_pruned.config["ratio"]:
-                hardest_pruned = candidate
+            architecture = _pruned_architecture(model, input_shape, ratio, align, merged_ratios(ratio))
+            previous = measured.get(architecture)
+            if previous is not None:
+                # Identical network, so identical latency verdict — reuse it to
+                # steer the search instead of paying for a second benchmark.
+                log(f"    same architecture as {previous.label} — reusing its measurement")
+                candidate = previous
+            else:
+                candidate = _attempt(
+                    label,
+                    f"prune({ratio:.3f}, align={align}) -> recover -> quantize",
+                    lambda r=ratio: run(
+                        pipeline(f"prune_{r:.3f}")
+                        .prune(ratio=r, align=align, ratio_overrides=merged_ratios(r))
+                        .recover()
+                        .quantize()
+                    ),
+                    budget,
+                    config={"ratio": ratio},
+                )
+                attempts.append(candidate)
+                measured[architecture] = candidate
+                log(f"    {candidate.result.final.summary()}")
+                log_prune_warnings(candidate)
+                if hardest_pruned is None or ratio > hardest_pruned.config["ratio"]:
+                    hardest_pruned = candidate
 
             hits_speed = not budget.latency_failed(candidate.result.baseline, candidate.result.final)
             if hits_speed:
