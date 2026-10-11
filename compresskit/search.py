@@ -46,7 +46,11 @@ def _merge_gentlest(overrides_a: dict[str, float], overrides_b: dict[str, float]
 
 # A standalone decimal (a ratio, a millisecond figure) — but not the digits
 # inside a layer path like "layer1.2.conv1", which identify *which* layer.
-_STANDALONE_NUMBER = re.compile(r"(?<![\w.])\d+\.\d+")
+# Layers inside a nested nn.Sequential are named like "0.0" and "1.2", which
+# look exactly like ratios; the prune warnings print those names quoted
+# (['0.0'], {'0.0': 8}) or as a bare "0.0:" label, whereas a ratio in prose is
+# never quoted or followed by a colon, so quotes and ':' mark a name to keep.
+_STANDALONE_NUMBER = re.compile(r"""(?<![\w.'"])\d+\.\d+(?![\w.'":])""")
 
 
 def _warning_key(warning: str) -> str:

@@ -122,6 +122,12 @@ class TestPruneWarnings:
         assert _warning_key(a) == _warning_key(b), "same issue at a different ratio is one warning"
         assert _warning_key(a) != _warning_key(c), "a different layer is a different warning"
 
+    def test_warning_key_keeps_decimal_looking_layer_names_distinct(self):
+        assert _warning_key("['0.0'] cannot be pruned at all") != _warning_key("['0.1'] cannot be pruned at all")
+        assert _warning_key("{'0.0': 8} use a smaller alignment") != _warning_key("{'0.1': 8} use a smaller alignment")
+        assert _warning_key("0.0: requested ratio 0.300 but") != _warning_key("0.1: requested ratio 0.300 but")
+        assert _warning_key("0.0: requested ratio 0.300 but") == _warning_key("0.0: requested ratio 0.450 but")
+
     def test_new_warnings_returns_each_key_once(self):
         seen: set[str] = set()
         first = _new_warnings(["x at 0.5", "y"], seen)
