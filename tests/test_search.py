@@ -70,6 +70,15 @@ class TestEscalation:
         ), "the kept layers must actually stay float32"
         assert result.sensitivity is not None
 
+    def test_qat_attempt_actually_runs_a_qat_stage(self, model, loader, tmp_path):
+        """The label alone proves nothing — the measured stages must include QAT."""
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s", **FAST)
+        qat_attempt = next(a for a in result.attempts if a.label == "qat+quantize")
+        stage_names = [m.stage for m in qat_attempt.result.stages]
+        assert any(name.endswith("_qat") for name in stage_names), stage_names
+        assert stage_names[-1].endswith("_quantize"), "quantize must still be last"
+
     def test_keep_float_zero_skips_mixed_precision(self, model, loader, tmp_path, fast_int8_host):
         result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
                           train_loader=loader, workdir=tmp_path / "s", keep_float=0, **FAST)
