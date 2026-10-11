@@ -228,3 +228,37 @@ class TestDuplicateArchitectures:
         assert len(archs) == len(set(archs)), f"re-measured a duplicate architecture: {[a.label for a in pruned]}"
         assert len(pruned) < 4, "this fixture's later ratios should collapse onto one architecture"
         assert not result.met and result.chosen is not None, "the skip must not break best-effort selection"
+
+
+class TestBorderlineLatency:
+    def test_borderline_pass_is_remeasured_before_it_steers_the_search(self, model, loader, tmp_path):
+        # confirm_margin≈1 makes any latency pass borderline, so the
+        # quantize-only attempt (passes latency, fails accuracy) must be
+        # confirmed at full fidelity even though the search moves past it.
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s",
+                          confirm_margin=0.999999, **FAST)
+        first = result.attempts[0]
+        assert first.label == "quantize-only"
+        assert first.full_fidelity
+        assert first.result.final.latency.runs == 200
+
+    def test_clear_passes_are_not_remeasured(self, model, loader, tmp_path):
+        result = compress(model, loader, loader, budget="latency<1000ms,accuracy>99.99%",
+                          train_loader=loader, workdir=tmp_path / "s",
+                          confirm_margin=0.0, **FAST)
+        for attempt in result.attempts:
+            if attempt is not result.chosen:
+                assert not attempt.full_fidelity, attempt.label
+                assert attempt.result.final.latency.runs == FAST["search_runs"]
+
+    def test_chosen_attempt_is_not_measured_twice(self, model, loader, tmp_path, monkeypatch):
+        import compresskit.search as search
+        calls = []
+        original = search.measure
+        monkeypatch.setattr(search, "measure", lambda *a, **k: calls.append(1) or original(*a, **k))
+        compress(model, loader, loader, budget="latency<1000ms",
+                 workdir=tmp_path / "s", confirm_margin=0.999999, **FAST)
+        # quantize-only meets this budget: confirmed once (baseline + 1 stage),
+        # and finalize must not repeat that work.
+        assert len(calls) == 2

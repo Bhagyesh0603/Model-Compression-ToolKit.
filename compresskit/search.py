@@ -207,6 +207,9 @@ class Attempt:
     result: PipelineResult
     failures: list[str]
     config: dict = field(default_factory=dict)
+    # True once the numbers come from the full-fidelity measurement rather than
+    # the cheap search-time one, so nothing re-measures the same artifact twice.
+    full_fidelity: bool = False
 
     @property
     def met(self) -> bool:
@@ -318,6 +321,7 @@ def compress(
     ratio_steps: int = 4,
     search_runs: int = 60,
     search_accuracy_limit: int | None = 2000,
+    confirm_margin: float = 0.1,
     verbose: bool = True,
 ) -> SearchResult:
     """Find the least compression that meets `budget`. Escalates only as needed.
@@ -329,6 +333,12 @@ def compress(
     `keep_float` is how many of the most sensitive layers the mixed-precision
     step keeps in float32 when accuracy is the only thing quantization misses;
     `0` disables that step.
+
+    `confirm_margin` is the fraction of the latency limit, measured down from
+    it, inside which a passing candidate is re-measured at full fidelity before
+    the search trusts the verdict: search timings use few runs, so a median that
+    barely clears the limit may only have done so on noise. `0` never
+    re-measures.
     """
     budget = Budget.parse(budget) if isinstance(budget, str) else budget
     workdir = Path(workdir)
@@ -345,6 +355,22 @@ def compress(
         # warning are suppressed here because the final summary counts them.
         for warning in _new_warnings(candidate.prune_warnings, shown_warnings):
             log(f"    ! {warning}")
+
+    def confirm_borderline(candidate: Attempt) -> Attempt:
+        # A pass within the measurement noise of the limit is not a pass yet:
+        # the search times few runs to stay affordable, and a lucky median at
+        # the boundary would steer every later decision. Only passes are
+        # checked — a borderline *fail* just costs one more trial, while a
+        # false pass is how a budget-missing network gets chosen.
+        limit = budget.max_latency_ms
+        if limit is None or candidate.full_fidelity:
+            return candidate
+        median = candidate.result.final.latency.median_ms
+        if median <= limit and median > (1.0 - confirm_margin) * limit:
+            log(f"    borderline ({median:.3f} ms vs {limit:.3f} ms) — re-measuring at full fidelity")
+            _remeasure_full(candidate, budget, test_loader, input_shape)
+            log(f"    {candidate.result.final.summary()}")
+        return candidate
 
     def pipeline(name: str, full: bool = False) -> Pipeline:
         return Pipeline(
@@ -379,7 +405,9 @@ def compress(
 
     # 1. Quantization alone — no retraining, no architecture change.
     log("\n[1] quantize only")
-    attempt = _attempt("quantize-only", "quantize", lambda: run(pipeline("q_only").quantize()), budget)
+    attempt = confirm_borderline(
+        _attempt("quantize-only", "quantize", lambda: run(pipeline("q_only").quantize()), budget)
+    )
     attempts.append(attempt)
     log(f"    {attempt.result.final.summary()}")
     if attempt.met:
@@ -407,13 +435,13 @@ def compress(
         log("    " + "\n    ".join(report.summary(top=5).splitlines()))
         kept = report.most_sensitive(keep_float)
         log(f"\n[1.3] mixed precision — keeping {kept} in float32")
-        mixed = _attempt(
+        mixed = confirm_borderline(_attempt(
             "mixed-precision",
             f"quantize (keep {len(kept)} most sensitive in fp32)",
             lambda: run(pipeline("mixed").quantize(exclude_layers=kept)),
             budget,
             config={"keep_float": kept},
-        )
+        ))
         attempts.append(mixed)
         log(f"    {mixed.result.final.summary()}")
         if mixed.met:
@@ -427,13 +455,13 @@ def compress(
     #      distillation, so it's worth trying before escalating further.
     if train_loader is not None and accuracy_only:
         log(f"\n[1.5] QAT recovery ({qat_epochs} epochs)")
-        qat_attempt = _attempt(
+        qat_attempt = confirm_borderline(_attempt(
             "qat+quantize",
             f"qat({qat_epochs} epochs) -> quantize",
             lambda: run(pipeline("qat").qat(epochs=qat_epochs).quantize()),
             budget,
             config={"qat_epochs": qat_epochs},
-        )
+        ))
         attempts.append(qat_attempt)
         log(f"    {qat_attempt.result.final.summary()}")
         if qat_attempt.met:
@@ -481,7 +509,7 @@ def compress(
                 log(f"    same architecture as {previous.label} — reusing its measurement")
                 candidate = previous
             else:
-                candidate = _attempt(
+                candidate = confirm_borderline(_attempt(
                     label,
                     f"prune({ratio:.3f}, align={align}) -> recover -> quantize",
                     lambda r=ratio: run(
@@ -492,7 +520,7 @@ def compress(
                     ),
                     budget,
                     config={"ratio": ratio},
-                )
+                ))
                 attempts.append(candidate)
                 measured[architecture] = candidate
                 log(f"    {candidate.result.final.summary()}")
@@ -530,13 +558,13 @@ def compress(
                 pipe = pipe.prune(ratio=ratio, align=align, ratio_overrides=merged_ratios(ratio)).recover()
             return run(pipe.distill(epochs=distill_epochs, loss=distill_loss).quantize())
 
-        distilled = _attempt(
+        distilled = confirm_borderline(_attempt(
             f"prune@{ratio:.3f}+distill+quantize" if ratio else "distill+quantize",
             f"prune({ratio:.3f}) -> recover -> distill({distill_loss}) -> quantize",
             build_distilled,
             budget,
             config={"ratio": ratio, "distill_epochs": distill_epochs, "loss": distill_loss},
-        )
+        ))
         attempts.append(distilled)
         log(f"    {distilled.result.final.summary()}")
         log_prune_warnings(distilled)
@@ -559,6 +587,8 @@ def _remeasure_full(attempt: Attempt, budget: Budget, test_loader, input_shape) 
     already exists on disk, no recompute needed) is measured properly and the
     budget verdict recomputed against the real numbers.
     """
+    if attempt.full_fidelity:
+        return
     result = attempt.result
 
     def full(measurement: Measurement) -> Measurement:
@@ -582,3 +612,4 @@ def _remeasure_full(attempt: Attempt, budget: Budget, test_loader, input_shape) 
     result.baseline = full(result.baseline)
     result.stages = [full(stage) for stage in result.stages]
     attempt.failures = budget.failures(result.baseline, result.final)
+    attempt.full_fidelity = True
