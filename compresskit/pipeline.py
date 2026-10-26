@@ -275,11 +275,25 @@ class Pipeline:
                     self.model, example, PruneConfig(**options), loader=self.calibration_loader
                 )
 
+                def make_epoch_logger(step_num):
+                    def _log_epoch(student, epoch, stats):
+                        log(
+                            f"    [step {step_num}] epoch {epoch + 1}/{fine_tune_epochs} | "
+                            f"loss: {stats['loss']:.4f} | train_acc: {stats['train_acc'] * 100:.2f}% | lr: {stats['lr']:.5f}"
+                        )
+                    return _log_epoch
+
                 def on_step(m, step_taken):
                     recalibrate_bn(m, self.calibration_loader, batches=8)
                     if fine_tune_epochs > 0:
                         log(f"  [step {step_taken}/{pruner.config.steps}] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
-                        distill(m, self.original, train_data, DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss))
+                        distill(
+                            m,
+                            self.original,
+                            train_data,
+                            DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss),
+                            on_epoch=make_epoch_logger(step_taken),
+                        )
                         recalibrate_bn(m, self.calibration_loader, batches=8)
 
                 # BN statistics go stale the moment channels are removed, so
@@ -290,7 +304,13 @@ class Pipeline:
                 # Also fine-tune the final pruned architecture if fine_tune_epochs was requested
                 if fine_tune_epochs > 0:
                     log(f"  [step {pruner.config.steps}/{pruner.config.steps} final] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
-                    distill(self.model, self.original, train_data, DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss))
+                    distill(
+                        self.model,
+                        self.original,
+                        train_data,
+                        DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss),
+                        on_epoch=make_epoch_logger(pruner.config.steps),
+                    )
                     recalibrate_bn(self.model, self.calibration_loader, batches=8)
 
                 self.model = pruner.model
