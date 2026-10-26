@@ -31,6 +31,7 @@ installations without any shared random state.
 from __future__ import annotations
 
 import csv
+import os
 from pathlib import Path
 
 import torch
@@ -45,6 +46,30 @@ IMAGENET_STD = (0.229, 0.224, 0.225)
 TEST_FRACTION = 0.15
 
 DEFAULT_ROOT = Path(__file__).resolve().parent.parent.parent / "data" / "har" / "Human Action Recognition"
+
+HAR_ROOT_ENV = "COMPRESSKIT_HAR_ROOT"
+_KAGGLE_INPUT = Path("/kaggle/input")
+
+
+def resolve_root(root: Path | str | None = None) -> Path:
+    """Where the HAR dataset lives.
+
+    Order: an explicit argument, then $COMPRESSKIT_HAR_ROOT, then the repo's
+    `data/har/` folder, then a search of Kaggle's read-only `/kaggle/input`
+    (where an attached dataset is mounted under a name that varies, so the
+    folder holding `Training_set.csv` is located rather than hardcoded).
+    """
+    if root is not None:
+        return Path(root)
+    if os.environ.get(HAR_ROOT_ENV):
+        return Path(os.environ[HAR_ROOT_ENV])
+    if DEFAULT_ROOT.exists():
+        return DEFAULT_ROOT
+    if _KAGGLE_INPUT.exists():
+        for csv_path in sorted(_KAGGLE_INPUT.rglob("Training_set.csv")):
+            return csv_path.parent
+    return DEFAULT_ROOT
+
 
 _train_tf = transforms.Compose([
     transforms.RandomResizedCrop(224),
@@ -79,8 +104,8 @@ def build_har_resnet18(num_classes: int = HAR_CLASSES, pretrained: bool = True) 
     return model
 
 
-def _require_root(root: Path) -> Path:
-    root = Path(root)
+def _require_root(root: Path | str | None) -> Path:
+    root = resolve_root(root)
     if not root.exists():
         raise FileNotFoundError(
             f"HAR dataset not found at {root}. Download it first:\n"
@@ -96,7 +121,7 @@ def _read_labels(root: Path) -> dict[str, str]:
         return {row["filename"]: row["label"] for row in csv.DictReader(f)}
 
 
-def class_names(root: Path = DEFAULT_ROOT) -> list[str]:
+def class_names(root: Path | str | None = None) -> list[str]:
     labels = _read_labels(_require_root(root))
     return sorted(set(labels.values()))
 
@@ -141,7 +166,7 @@ def _class_to_idx(root: Path) -> dict[str, int]:
     return {name: i for i, name in enumerate(class_names(root))}
 
 
-def train_loader(batch_size: int = 64, root: Path = DEFAULT_ROOT, num_workers: int = 0) -> DataLoader:
+def train_loader(batch_size: int = 64, root: Path | str | None = None, num_workers: int = 0) -> DataLoader:
     root = _require_root(root)
     fit_rows, _ = _split_filenames(root)
     ds = _HARDataset(root, fit_rows, _class_to_idx(root), _train_tf)
@@ -149,14 +174,14 @@ def train_loader(batch_size: int = 64, root: Path = DEFAULT_ROOT, num_workers: i
                       num_workers=num_workers, drop_last=True)
 
 
-def test_loader(batch_size: int = 64, root: Path = DEFAULT_ROOT, num_workers: int = 0) -> DataLoader:
+def test_loader(batch_size: int = 64, root: Path | str | None = None, num_workers: int = 0) -> DataLoader:
     root = _require_root(root)
     _, test_rows = _split_filenames(root)
     ds = _HARDataset(root, test_rows, _class_to_idx(root), _eval_tf)
     return DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
 
-def calibration_loader(n: int = 512, batch_size: int = 32, root: Path = DEFAULT_ROOT,
+def calibration_loader(n: int = 512, batch_size: int = 32, root: Path | str | None = None,
                        seed: int = 0) -> DataLoader:
     """Held-out-from-test calibration data, drawn from the fit (train) split.
 

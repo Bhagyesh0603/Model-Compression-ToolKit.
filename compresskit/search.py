@@ -318,6 +318,10 @@ def compress(
     distill_epochs: int = 10,
     distill_loss: str = "dkd",
     qat_epochs: int = 3,
+    prune_steps: int = 1,
+    prune_fine_tune_epochs: int = 0,
+    precision: str = "auto",
+    allow_slow_int8: bool = False,
     keep_float: int = 2,
     ratio_steps: int = 4,
     search_runs: int = 60,
@@ -331,6 +335,17 @@ def compress(
     to keep the loop affordable; the chosen configuration is then re-measured in
     full so the reported numbers are never the cheap estimates.
 
+    `prune_steps` / `prune_fine_tune_epochs` make the recovery stage's pruning
+    gradual (cut in `prune_steps` increments, fine-tuning after each) instead
+    of one-shot. The cheap binary-search trials stay one-shot on purpose — they
+    only rank ratios by latency — so only the final recovery attempt, the one
+    whose accuracy matters, pays for the gradual schedule.
+
+    `precision` / `allow_slow_int8` are forwarded to every quantize stage, so a
+    search run on a host without fast INT8 (a cloud CPU) can still produce the
+    INT8 artifact for a different deployment target. Latency verdicts then
+    describe the host that ran the search, not the target.
+
     `keep_float` is how many of the most sensitive layers the mixed-precision
     step keeps in float32 when accuracy is the only thing quantization misses;
     `0` disables that step.
@@ -343,6 +358,7 @@ def compress(
     """
     budget = Budget.parse(budget) if isinstance(budget, str) else budget
     workdir = Path(workdir)
+    quant_options = {"precision": precision, "allow_slow_int8": allow_slow_int8}
 
     def log(message):
         if verbose:
@@ -407,7 +423,7 @@ def compress(
     # 1. Quantization alone — no retraining, no architecture change.
     log("\n[1] quantize only")
     attempt = confirm_borderline(
-        _attempt("quantize-only", "quantize", lambda: run(pipeline("q_only").quantize()), budget)
+        _attempt("quantize-only", "quantize", lambda: run(pipeline("q_only").quantize(**quant_options)), budget)
     )
     attempts.append(attempt)
     log(f"    {attempt.result.final.summary()}")
@@ -439,7 +455,7 @@ def compress(
         mixed = confirm_borderline(_attempt(
             "mixed-precision",
             f"quantize (keep {len(kept)} most sensitive in fp32)",
-            lambda: run(pipeline("mixed").quantize(exclude_layers=kept)),
+            lambda: run(pipeline("mixed").quantize(exclude_layers=kept, **quant_options)),
             budget,
             config={"keep_float": kept},
         ))
@@ -459,7 +475,7 @@ def compress(
         qat_attempt = confirm_borderline(_attempt(
             "qat+quantize",
             f"qat({qat_epochs} epochs) -> quantize",
-            lambda: run(pipeline("qat").qat(epochs=qat_epochs).quantize()),
+            lambda: run(pipeline("qat").qat(epochs=qat_epochs).quantize(**quant_options)),
             budget,
             config={"qat_epochs": qat_epochs},
         ))
@@ -517,7 +533,7 @@ def compress(
                         pipeline(f"prune_{r:.3f}")
                         .prune(ratio=r, align=align, ratio_overrides=merged_ratios(r))
                         .recover()
-                        .quantize()
+                        .quantize(**quant_options)
                     ),
                     budget,
                     config={"ratio": ratio},
@@ -556,15 +572,21 @@ def compress(
         def build_distilled():
             pipe = pipeline("distilled")
             if ratio > 0:
-                pipe = pipe.prune(ratio=ratio, align=align, ratio_overrides=merged_ratios(ratio)).recover()
-            return run(pipe.distill(epochs=distill_epochs, loss=distill_loss).quantize())
+                pipe = pipe.prune(
+                    ratio=ratio, align=align, ratio_overrides=merged_ratios(ratio),
+                    steps=prune_steps, fine_tune_epochs=prune_fine_tune_epochs, loss=distill_loss,
+                ).recover()
+            return run(pipe.distill(epochs=distill_epochs, loss=distill_loss).quantize(**quant_options))
 
         distilled = confirm_borderline(_attempt(
             f"prune@{ratio:.3f}+distill+quantize" if ratio else "distill+quantize",
-            f"prune({ratio:.3f}) -> recover -> distill({distill_loss}) -> quantize",
+            f"prune({ratio:.3f}"
+            + (f", {prune_steps} steps x {prune_fine_tune_epochs} ft epochs" if prune_steps > 1 else "")
+            + f") -> recover -> distill({distill_loss}) -> quantize",
             build_distilled,
             budget,
-            config={"ratio": ratio, "distill_epochs": distill_epochs, "loss": distill_loss},
+            config={"ratio": ratio, "distill_epochs": distill_epochs, "loss": distill_loss,
+                    "prune_steps": prune_steps, "prune_fine_tune_epochs": prune_fine_tune_epochs},
         ))
         attempts.append(distilled)
         log(f"    {distilled.result.final.summary()}")

@@ -91,11 +91,23 @@ pipe.prune(ratio=0.5, ratio_overrides=report.prune_ratios(0.5))
 ```bash
 compresskit probe                       # what this CPU can actually do
 compresskit train --arch resnet20       # FP32 baseline on CIFAR-10
+compresskit train --arch har_resnet18 --dataset har --data-root <dir>   # pretrained ResNet-18 on HAR
 compresskit sensitivity --model ckpt.pt # rank layers by quantization damage
 compresskit compress --model ckpt.pt --budget "latency<0.5ms,accuracy_drop<1%" --report out.html
-compresskit pipeline --model ckpt.pt --prune 0.5 --distill 10 --report out.html
+compresskit pipeline --model ckpt.pt --prune 0.5 --steps 5 --fine-tune-epochs 5 --report out.html
 compresskit bench model.onnx            # time an existing artifact
 ```
+
+Datasets: `--dataset cifar10 | har | folder`. `folder` is any image-classification
+set with one sub-directory per class (`--data-root`, `--input-size`).
+
+## Running the whole flow in one go (Kaggle)
+
+[`kaggle/compresskit_end_to_end.ipynb`](kaggle/compresskit_end_to_end.ipynb) runs
+train → gradual prune + fine-tune → INT8 quantize → ONNX evaluation → HTML report
+in a single *Run All*, on a free T4. Plan and rationale: [docs/WORKFLOW.md](docs/WORKFLOW.md).
+Latency from a cloud run describes the cloud CPU; confirm speed on your target with
+`compresskit bench model.onnx`.
 
 ## How it works
 
@@ -187,10 +199,13 @@ compresskit/
     data.py             CIFAR-10 loaders with train / calibration / test role separation
     train.py            baseline training, checkpoint I/O
     har.py              human-action-recognition dataset/model support
+    datasets.py         cifar10 / har / any image-folder behind one interface
 experiments/
   train_baseline.py  train ResNet-56 / VGG-16-BN on CIFAR-10 (MPS)
   run_sweep.py       ratio x precision sweep -> CSV + Pareto report
   demo.ipynb         one image, original vs compressed, side by side
+kaggle/
+  compresskit_end_to_end.ipynb   the one-notebook workflow
 tests/
 ```
 

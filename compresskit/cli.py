@@ -18,27 +18,67 @@ from pathlib import Path
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-def _loaders(args):
-    from .zoo.data import calibration_loader, test_loader, train_loader
+PRETRAINED_ARCHS = ("har_resnet18", "resnet18_pretrained")
 
+
+def _dataset_name(args, meta=None) -> str:
+    """Explicit --dataset, else what the checkpoint was trained on, else a guess from --arch."""
+    if getattr(args, "dataset", None):
+        return args.dataset
+    if meta and meta.get("dataset"):
+        return meta["dataset"]
+    return "har" if args.arch in PRETRAINED_ARCHS else "cifar10"
+
+
+def _bundle(args, meta=None):
+    from .zoo.datasets import get_bundle
+
+    return get_bundle(_dataset_name(args, meta), getattr(args, "data_root", None),
+                      getattr(args, "input_size", 224))
+
+
+def _loaders(args, bundle):
+    batch = args.batch_size or (128 if bundle.name == "cifar10" else 64)
     return (
-        calibration_loader(n=args.calib, batch_size=64),
-        test_loader(batch_size=256),
-        train_loader(batch_size=args.batch_size),
+        bundle.calibration_loader(n=args.calib, batch_size=32 if bundle.name != "cifar10" else 64),
+        bundle.test_loader(batch_size=batch),
+        bundle.train_loader(batch_size=batch),
     )
 
 
-def _load_model(args):
+def _build_arch(arch: str, num_classes: int):
+    from .zoo.har import build_har_resnet18
     from .zoo.models import build
+
+    if arch in PRETRAINED_ARCHS:
+        return build_har_resnet18(num_classes=num_classes, pretrained=True)
+    return build(arch, num_classes=num_classes)
+
+
+def _load_model(args):
+    """Returns (model, meta). Without --model, an untrained --arch (numbers are meaningless)."""
     from .zoo.train import load_model
 
     if args.model:
         model, meta = load_model(args.model)
         print(f"loaded {args.model} ({meta.get('arch', '?')}, "
               f"baseline accuracy {meta.get('accuracy', float('nan')) * 100:.2f}%)")
-        return model
+        return model, meta
     print(f"no --model given; using an untrained {args.arch} (numbers will be meaningless)")
-    return build(args.arch)
+    return _build_arch(args.arch, _bundle(args).num_classes), {}
+
+
+def _report_extras(result, bundle, meta, test) -> dict:
+    """Detail sections for the HTML report: training curve and per-class accuracy."""
+    from .core.benchmark import evaluate_onnx
+
+    extras = {"training_history": meta.get("history"), "class_names": bundle.class_names}
+    try:
+        extras["per_class"] = (evaluate_onnx(result.baseline.artifact, test),
+                               evaluate_onnx(result.final.artifact, test))
+    except Exception as error:  # a report section must never sink a finished run
+        print(f"  (per-class accuracy skipped: {error})")
+    return extras
 
 
 def cmd_probe(args) -> int:
@@ -63,32 +103,51 @@ def cmd_bench(args) -> int:
 
 def cmd_train(args) -> int:
     from .core.benchmark import accuracy_torch
-    from .zoo.data import test_loader, train_loader
-    from .zoo.models import build
     from .zoo.train import TrainConfig, save_model, train
 
-    tl, vl = train_loader(batch_size=args.batch_size), test_loader(batch_size=256)
-    model = build(args.arch)
+    out = Path(args.out or f"checkpoints/{args.arch}_fp32.pt")
+    if args.skip_if_exists and out.exists():
+        print(f"{out} already exists — skipping training (--skip-if-exists)")
+        return 0
+
+    bundle = _bundle(args)
+    pretrained = args.arch in PRETRAINED_ARCHS
+    epochs = args.epochs or (10 if pretrained else 60)
+    lr = args.lr or (0.01 if pretrained else 0.1)
+    batch = args.batch_size or (128 if bundle.name == "cifar10" else 64)
+    tl, vl = bundle.train_loader(batch_size=batch), bundle.test_loader(batch_size=batch)
+    model = _build_arch(args.arch, bundle.num_classes)
+
+    if pretrained:
+        # Same recipe as the original notebook: keep the ImageNet backbone
+        # frozen and fine-tune only layer4 and the new head.
+        for name, param in model.named_parameters():
+            param.requires_grad = name.startswith(("layer4", "fc"))
+
+    history = []
 
     def on_epoch(_, epoch, stats):
-        print(f"epoch {epoch + 1:3d}/{args.epochs}  loss {stats['loss']:.3f}  "
+        history.append({k: stats[k] for k in ("epoch", "loss", "train_acc", "val_acc") if k in stats})
+        print(f"epoch {epoch + 1:3d}/{epochs}  loss {stats['loss']:.3f}  "
               f"train {stats['train_acc'] * 100:5.2f}%  val {stats.get('val_acc', 0) * 100:5.2f}%  "
               f"{stats['seconds']:.1f}s", flush=True)
 
-    train(model, tl, TrainConfig(epochs=args.epochs, lr=args.lr), val_loader=vl, on_epoch=on_epoch)
+    train(model, tl, TrainConfig(epochs=epochs, lr=lr), val_loader=vl, on_epoch=on_epoch)
     accuracy = accuracy_torch(model, vl)
-    path = save_model(model, args.out or f"checkpoints/{args.arch}_fp32.pt",
-                      {"arch": args.arch, "epochs": args.epochs, "accuracy": accuracy, "dataset": "cifar10"})
+    path = save_model(model, out, {
+        "arch": args.arch, "epochs": epochs, "accuracy": accuracy, "dataset": bundle.name,
+        "input_shape": list(bundle.input_shape), "class_names": bundle.class_names, "history": history,
+    })
     print(f"final top-1 {accuracy * 100:.2f}% -> {path}")
     return 0
 
 
 def cmd_sensitivity(args) -> int:
     from .sensitivity import analyze
-    from .zoo.data import calibration_loader
 
-    model = _load_model(args)
-    report = analyze(model, calibration_loader(n=args.calib, batch_size=64), batches=args.batches)
+    model, meta = _load_model(args)
+    bundle = _bundle(args, meta)
+    report = analyze(model, bundle.calibration_loader(n=args.calib, batch_size=32), batches=args.batches)
     print()
     print(report.summary(top=args.top))
     print()
@@ -101,10 +160,12 @@ def cmd_pipeline(args) -> int:
     from .pipeline import Pipeline
     from .report import render
 
-    model = _load_model(args)
-    calib, test, train = _loaders(args)
+    model, meta = _load_model(args)
+    bundle = _bundle(args, meta)
+    calib, test, train = _loaders(args, bundle)
 
-    pipe = Pipeline(model, calib, test, train_loader=train, workdir=args.workdir)
+    pipe = Pipeline(model, calib, test, train_loader=train, input_shape=bundle.input_shape,
+                    workdir=args.workdir)
     if args.prune:
         pipe.prune(
             ratio=args.prune,
@@ -125,12 +186,13 @@ def cmd_pipeline(args) -> int:
     print()
     print(result.summary())
 
-    sensitivity = None
     if args.report:
         from .sensitivity import analyze
 
         sensitivity = analyze(model, calib, batches=4)
-        print(f"\nreport -> {render(result, args.report, sensitivity=sensitivity)}")
+        written = render(result, args.report, sensitivity=sensitivity,
+                         **_report_extras(result, bundle, meta, test))
+        print(f"\nreport -> {written}")
     if args.json:
         print(f"json   -> {result.save_json(args.json)}")
     return 0
@@ -140,25 +202,34 @@ def cmd_compress(args) -> int:
     from .report import render_search
     from .search import compress
 
-    model = _load_model(args)
-    calib, test, train = _loaders(args)
+    model, meta = _load_model(args)
+    bundle = _bundle(args, meta)
+    calib, test, train = _loaders(args, bundle)
 
     result = compress(
         model, calib, test,
         budget=args.budget,
         train_loader=train,
+        input_shape=bundle.input_shape,
         workdir=args.workdir,
         align=args.align,
         distill_epochs=args.distill,
         distill_loss=args.loss,
         qat_epochs=args.qat_epochs,
+        prune_steps=args.steps,
+        prune_fine_tune_epochs=args.fine_tune_epochs,
+        precision=args.precision,
+        allow_slow_int8=args.allow_slow_int8,
     )
     print()
     print("=" * 78)
     print(result.summary())
 
     if args.report:
-        print(f"\nreport -> {render_search(result, args.report)}")
+        extras = _report_extras(result.chosen.result, bundle, meta, test) if result.chosen else {}
+        print(f"\nreport -> {render_search(result, args.report, **extras)}")
+    if args.json and result.chosen:
+        print(f"json   -> {result.chosen.result.save_json(args.json)}")
     return 0 if result.met else 1
 
 
@@ -167,10 +238,19 @@ def build_parser() -> argparse.ArgumentParser:
                                      formatter_class=argparse.RawDescriptionHelpFormatter)
     subparsers = parser.add_subparsers(dest="command", required=True)
 
+    def add_data_args(sub):
+        sub.add_argument("--dataset", choices=["cifar10", "har", "folder"],
+                         help="default: what the checkpoint was trained on, else guessed from --arch")
+        sub.add_argument("--data-root", help="dataset location (har: folder with Training_set.csv; "
+                                             "folder: one sub-directory per class)")
+        sub.add_argument("--input-size", type=int, default=224, help="image size for --dataset folder")
+
     def add_model_args(sub, calib_default=512):
         sub.add_argument("--model", help="checkpoint from `compresskit train`")
-        sub.add_argument("--arch", default="resnet20", help="architecture if no --model")
+        sub.add_argument("--arch", default="resnet20",
+                         help="architecture if no --model (resnet20/56/18, vgg16_bn, har_resnet18)")
         sub.add_argument("--calib", type=int, default=calib_default, help="calibration samples (train split)")
+        add_data_args(sub)
 
     probe = subparsers.add_parser("probe", help="report host CPU capabilities")
     probe.set_defaults(func=cmd_probe)
@@ -182,12 +262,15 @@ def build_parser() -> argparse.ArgumentParser:
     bench.add_argument("--runs", type=int, default=200)
     bench.set_defaults(func=cmd_bench)
 
-    train = subparsers.add_parser("train", help="train an FP32 baseline on CIFAR-10")
-    train.add_argument("--arch", default="resnet20")
-    train.add_argument("--epochs", type=int, default=60)
-    train.add_argument("--lr", type=float, default=0.1)
-    train.add_argument("--batch-size", type=int, default=128)
+    train = subparsers.add_parser("train", help="train an FP32 baseline")
+    train.add_argument("--arch", default="resnet20",
+                       help="resnet20/56/18, vgg16_bn, or har_resnet18 (ImageNet-pretrained)")
+    train.add_argument("--epochs", type=int, help="default 60 (10 for pretrained archs)")
+    train.add_argument("--lr", type=float, help="default 0.1 (0.01 for pretrained archs)")
+    train.add_argument("--batch-size", type=int, help="default 128 for CIFAR-10, else 64")
     train.add_argument("--out")
+    train.add_argument("--skip-if-exists", action="store_true", help="do nothing if --out already exists")
+    add_data_args(train)
     train.set_defaults(func=cmd_train)
 
     sens = subparsers.add_parser("sensitivity", help="rank layers by quantization damage")
@@ -207,7 +290,7 @@ def build_parser() -> argparse.ArgumentParser:
     pipe.add_argument("--precision", default="auto", choices=["auto", "int8", "fp16", "fp32"])
     pipe.add_argument("--allow-slow-int8", action="store_true")
     pipe.add_argument("--no-quantize", action="store_true")
-    pipe.add_argument("--batch-size", type=int, default=128)
+    pipe.add_argument("--batch-size", type=int)
     pipe.add_argument("--workdir", default="artifacts/pipeline")
     pipe.add_argument("--report", help="write an HTML report here")
     pipe.add_argument("--json", help="write raw measurements here")
@@ -220,7 +303,12 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--distill", type=int, default=10, help="distillation epochs if needed")
     auto.add_argument("--loss", default="dkd", choices=["kd", "dkd"])
     auto.add_argument("--qat-epochs", type=int, default=3, help="QAT epochs if quantize-only misses accuracy")
-    auto.add_argument("--batch-size", type=int, default=128)
+    auto.add_argument("--batch-size", type=int)
+    auto.add_argument("--steps", type=int, default=1, help="gradual pruning steps in the recovery stage")
+    auto.add_argument("--fine-tune-epochs", type=int, default=0, help="fine-tune epochs after each pruning step")
+    auto.add_argument("--precision", default="auto", choices=["auto", "int8", "fp16", "fp32"])
+    auto.add_argument("--allow-slow-int8", action="store_true")
+    auto.add_argument("--json", help="write raw measurements here")
     auto.add_argument("--workdir", default="artifacts/search")
     auto.add_argument("--report", help="write an HTML report here")
     auto.set_defaults(func=cmd_compress)

@@ -20,7 +20,7 @@ import torch
 import torch.nn as nn
 
 from .core import host as host_mod
-from .core.benchmark import Measurement, compression_score, efficiency_score, measure
+from .core.benchmark import Measurement, accuracy_torch, compression_score, efficiency_score, measure
 from .core.export import count_parameters, nodes_for_layers, to_onnx
 from .distillation import DistillConfig, distill
 from .pruning import PruneConfig, StructuredPruner, classifier_layers, recalibrate_bn
@@ -41,6 +41,9 @@ class PipelineResult:
     quantization: QuantResult | None = None
     prune_stats: dict | None = None
     warnings: list[str] = field(default_factory=list)
+    # One row per pruning step: accuracy right after the cut and after the
+    # fine-tune that follows it. Empty unless fine_tune_epochs > 0.
+    prune_history: list[dict] = field(default_factory=list)
 
     @property
     def final(self) -> Measurement:
@@ -73,7 +76,7 @@ class PipelineResult:
             self.table(),
             "",
             f"accuracy   {self.baseline.accuracy * 100:.2f}% -> {self.final.accuracy * 100:.2f}%  "
-            f"({self.accuracy_drop:+.2f} pp)",
+            f"(drop {self.accuracy_drop:.2f} pp)",
             f"latency    {self.baseline.latency.median_ms:.3f} -> {self.final.latency.median_ms:.3f} ms  "
             f"({self.speedup:.2f}x)",
             f"size       {self.baseline.size_mb:.2f} -> {self.final.size_mb:.2f} MB  "
@@ -90,6 +93,7 @@ class PipelineResult:
             "baseline": self.baseline.as_dict(),
             "stages": [m.as_dict() for m in self.stages],
             "prune_stats": self.prune_stats,
+            "prune_history": self.prune_history,
             "quantization": (
                 {
                     "precision": self.quantization.precision,
@@ -249,6 +253,7 @@ class Pipeline:
         warnings: list[str] = []
         quant_result = None
         prune_stats = None
+        prune_history: list[dict] = []
         example = torch.randn(*self.input_shape)
 
         baseline = self._measure("baseline", self.original)
@@ -283,9 +288,14 @@ class Pipeline:
                         )
                     return _log_epoch
 
-                def on_step(m, step_taken):
+                def fine_tune_step(m, step_taken):
                     recalibrate_bn(m, self.calibration_loader, batches=8)
                     if fine_tune_epochs > 0:
+                        row = {
+                            "step": step_taken,
+                            "params": count_parameters(m),
+                            "acc_after_cut": accuracy_torch(m, self.test_loader),
+                        }
                         log(f"  [step {step_taken}/{pruner.config.steps}] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
                         distill(
                             m,
@@ -295,23 +305,23 @@ class Pipeline:
                             on_epoch=make_epoch_logger(step_taken),
                         )
                         recalibrate_bn(m, self.calibration_loader, batches=8)
+                        row["acc_after_finetune"] = accuracy_torch(m, self.test_loader)
+                        log(f"  [step {step_taken}] accuracy {row['acc_after_cut'] * 100:.2f}% after cut -> "
+                            f"{row['acc_after_finetune'] * 100:.2f}% after fine-tune")
+                        prune_history.append(row)
+
+                def on_step(m, step_taken):
+                    fine_tune_step(m, step_taken)
 
                 # BN statistics go stale the moment channels are removed, so
                 # refresh them between iterative steps or the next importance
                 # ranking is computed on a mis-normalised network.
                 pruner.run(between_steps=on_step)
 
-                # Also fine-tune the final pruned architecture if fine_tune_epochs was requested
+                # The last cut has no `between_steps` call after it, so it gets
+                # the same cut -> fine-tune treatment here.
                 if fine_tune_epochs > 0:
-                    log(f"  [step {pruner.config.steps}/{pruner.config.steps} final] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
-                    distill(
-                        self.model,
-                        self.original,
-                        train_data,
-                        DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss),
-                        on_epoch=make_epoch_logger(pruner.config.steps),
-                    )
-                    recalibrate_bn(self.model, self.calibration_loader, batches=8)
+                    fine_tune_step(self.model, pruner.config.steps)
 
                 self.model = pruner.model
                 prune_stats = pruner.stats()
@@ -404,4 +414,5 @@ class Pipeline:
             quantization=quant_result,
             prune_stats=prune_stats.__dict__ if prune_stats else None,
             warnings=warnings,
+            prune_history=prune_history,
         )

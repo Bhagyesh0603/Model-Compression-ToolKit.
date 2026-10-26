@@ -30,6 +30,8 @@ include = ["compresskit*"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+addopts = "-m 'not slow'"
+markers = ["slow: full train->prune->quantize->report run (minutes); run with `pytest -m slow`"]
 filterwarnings = ["ignore::UserWarning", "ignore::DeprecationWarning"]
 
 [tool.ruff]

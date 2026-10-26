@@ -136,6 +136,80 @@ def sensitivity_figure(report):
     return figure
 
 
+def training_figure(history: list[dict]):
+    """Baseline training curves: loss, and train/validation accuracy per epoch."""
+    epochs = [h["epoch"] + 1 for h in history]
+    figure, (loss_ax, acc_ax) = plt.subplots(1, 2, figsize=(9.2, 3.4))
+    for axis in (loss_ax, acc_ax):
+        _style(axis)
+        axis.set_xlabel("epoch", fontsize=10, color=SLATE)
+    loss_ax.plot(epochs, [h["loss"] for h in history], color=VIOLET, linewidth=2)
+    loss_ax.set_title("training loss", fontsize=11, color=SLATE, loc="left")
+    acc_ax.plot(epochs, [h["train_acc"] * 100 for h in history], color=TEAL, linewidth=2, label="train")
+    if all("val_acc" in h for h in history):
+        acc_ax.plot(epochs, [h["val_acc"] * 100 for h in history], color=ROSE, linewidth=2, label="validation")
+    acc_ax.set_title("accuracy (%)", fontsize=11, color=SLATE, loc="left")
+    acc_ax.legend(frameon=False, fontsize=9)
+    figure.tight_layout()
+    return figure
+
+
+def _prune_history_rows(history: list[dict]) -> str:
+    rows = []
+    for h in history:
+        cut, tuned = h["acc_after_cut"] * 100, h["acc_after_finetune"] * 100
+        rows.append(
+            f"<tr><td class='num'>{h['step']}</td><td class='num'>{h['params']:,}</td>"
+            f"<td class='num'>{cut:.2f}%</td><td class='num'>{tuned:.2f}%</td>"
+            f"<td class='num'>{tuned - cut:+.2f}</td></tr>"
+        )
+    return "".join(rows)
+
+
+def _channel_rows(channels: dict) -> str:
+    rows = []
+    for name, (before, after) in channels.items():
+        removed = (1 - after / before) * 100 if before else 0.0
+        rows.append(
+            f"<tr><td class='mono'>{html.escape(name)}</td><td class='num'>{before}</td>"
+            f"<td class='num'>{after}</td><td class='num'>{removed:.0f}%</td></tr>"
+        )
+    return "".join(rows)
+
+
+def _per_class_rows(class_names, baseline, final) -> str:
+    base_recall, final_recall, support = baseline.recall(), final.recall(), final.support
+    order = sorted(range(len(final_recall)), key=lambda c: final_recall[c] - base_recall[c])
+    rows = []
+    for c in order:
+        label = class_names[c] if class_names and c < len(class_names) else str(c)
+        delta = (final_recall[c] - base_recall[c]) * 100
+        tone = " style='color:#B91C1C'" if delta < -2 else ""
+        rows.append(
+            f"<tr><td>{html.escape(label)}</td><td class='num'>{support[c]}</td>"
+            f"<td class='num'>{base_recall[c] * 100:.1f}%</td><td class='num'>{final_recall[c] * 100:.1f}%</td>"
+            f"<td class='num'{tone}>{delta:+.1f}</td></tr>"
+        )
+    return "".join(rows)
+
+
+def _latency_caveat(result) -> str | None:
+    """Latency is only a claim about the machine that measured it."""
+    host = result.host
+    cpu = host.get("cpu", "this host")
+    text = (
+        f"Latency was measured on {cpu}. It is a statement about that machine only — "
+        "verify on the deployment target with `compresskit bench <model.onnx>` before quoting a speedup."
+    )
+    if result.final.precision == "int8" and host.get("int8_speed") == "slow":
+        text = (
+            f"The INT8 model was built on {cpu}, which has no fast INT8 kernels, so the latency shown here is "
+            "not representative (INT8 can even be slower than FP32 on this CPU). Accuracy and file size are "
+            "valid anywhere; measure speed on the CPU you will deploy to. " + text
+        )
+    return text
+
+
 def _card(label: str, value: str, note: str = "", tone: str = "") -> str:
     klass = f" {tone}" if tone else ""
     return (
@@ -165,8 +239,16 @@ def _stage_rows(baseline: Measurement, stages: list[Measurement]) -> str:
     return "\n".join(rows)
 
 
-def render(result, path: str | Path, sensitivity=None, title: str = "Compression report") -> Path:
-    """Write a standalone HTML report for a PipelineResult. Returns the path."""
+def render(result, path: str | Path, sensitivity=None, title: str = "Compression report",
+           training_history: list[dict] | None = None, class_names: list[str] | None = None,
+           per_class: tuple | None = None) -> Path:
+    """Write a standalone HTML report for a PipelineResult. Returns the path.
+
+    Optional detail sections appear only when their data is supplied:
+    `training_history` (baseline training curve), `per_class` (a
+    (baseline, final) pair of ClassMetrics, with `class_names`); the gradual
+    pruning schedule and per-layer channel table come from `result` itself.
+    """
     path = Path(path)
     path.parent.mkdir(parents=True, exist_ok=True)
 
@@ -191,10 +273,38 @@ def render(result, path: str | Path, sensitivity=None, title: str = "Compression
     if sensitivity is not None:
         charts += f'<h2>Per-layer sensitivity</h2><img src="{_png_data_uri(sensitivity_figure(sensitivity))}" alt="sensitivity">'
 
-    warnings = ""
-    if result.warnings:
-        items = "".join(f"<li>{html.escape(w)}</li>" for w in result.warnings)
-        warnings = f'<h2>Notes</h2><ul class="note-list">{items}</ul>'
+    extra_sections = ""
+    if result.prune_history:
+        extra_sections += (
+            "<h2>Gradual pruning schedule</h2>"
+            "<table><thead><tr><th class='num'>step</th><th class='num'>params</th>"
+            "<th class='num'>acc right after cut</th><th class='num'>acc after fine-tune</th>"
+            "<th class='num'>recovered pp</th></tr></thead>"
+            f"<tbody>{_prune_history_rows(result.prune_history)}</tbody></table>"
+        )
+    if result.prune_stats and result.prune_stats.get("channels"):
+        extra_sections += (
+            "<h2>Channels per layer</h2><extra_sectionss><summary>show all layers</summary>"
+            "<table><thead><tr><th>layer</th><th class='num'>before</th><th class='num'>after</th>"
+            "<th class='num'>removed</th></tr></thead>"
+            f"<tbody>{_channel_rows(result.prune_stats['channels'])}</tbody></table></extra_sectionss>"
+        )
+    if training_history:
+        extra_sections += (
+            "<h2>Baseline training curve</h2>"
+            f'<img src="{_png_data_uri(training_figure(training_history))}" alt="training curve">'
+        )
+    if per_class is not None:
+        extra_sections += (
+            "<h2>Per-class accuracy (recall), worst change first</h2>"
+            "<table><thead><tr><th>class</th><th class='num'>test samples</th><th class='num'>baseline</th>"
+            "<th class='num'>final</th><th class='num'>change pp</th></tr></thead>"
+            f"<tbody>{_per_class_rows(class_names, *per_class)}</tbody></table>"
+        )
+
+    notes = list(result.warnings) + [_latency_caveat(result)]
+    items = "".join(f"<li>{html.escape(w)}</li>" for w in notes)
+    warnings = f'<h2>Notes</h2><ul class="note-list">{items}</ul>'
 
     versions = ", ".join(f"{k} {v}" for k, v in host.get("versions", {}).items())
     quant = result.quantization
@@ -226,6 +336,7 @@ Accuracy is top-1 of the exported ONNX artifact on the held-out test split.</p>
 <th class="num">speedup</th><th class="num">MB</th><th class="num">params</th></tr></thead>
 <tbody>{_stage_rows(baseline, result.stages)}</tbody></table>
 {charts}
+{extra_sections}
 {warnings}
 <h2>Reproducibility</h2>
 <dl class="kv">
@@ -286,7 +397,7 @@ generated {datetime.now().strftime('%Y-%m-%d %H:%M')}</p>
     return path
 
 
-def render_search(search, path: str | Path, title: str = "Budget search report") -> Path:
+def render_search(search, path: str | Path, title: str = "Budget search report", **detail) -> Path:
     """Report for a SearchResult: every attempt, and why the winner won."""
     path = Path(path)
     if search.chosen is None:
@@ -298,7 +409,7 @@ def render_search(search, path: str | Path, title: str = "Budget search report")
         )
         return path
 
-    written = render(search.chosen.result, path, sensitivity=search.sensitivity, title=title)
+    written = render(search.chosen.result, path, sensitivity=search.sensitivity, title=title, **detail)
 
     rows = "".join(
         f"<tr><td class='mono'>{html.escape(a.label)}</td>"
