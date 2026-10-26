@@ -150,9 +150,33 @@ class Pipeline:
         self.stages: list[Stage] = []
         self.workdir.mkdir(parents=True, exist_ok=True)
 
-    def prune(self, ratio: float = 0.5, align: int = 16, steps: int = 1, criterion: str = "magnitude", **kwargs):
+    def prune(
+        self,
+        ratio: float = 0.5,
+        align: int = 16,
+        steps: int = 1,
+        criterion: str = "magnitude",
+        fine_tune_epochs: int = 0,
+        fine_tune_lr: float = 0.005,
+        loss: str = "kd",
+        loader=None,
+        **kwargs,
+    ):
         self.stages.append(
-            Stage("prune", {"ratio": ratio, "align": align, "steps": steps, "criterion": criterion, **kwargs})
+            Stage(
+                "prune",
+                {
+                    "ratio": ratio,
+                    "align": align,
+                    "steps": steps,
+                    "criterion": criterion,
+                    "fine_tune_epochs": fine_tune_epochs,
+                    "fine_tune_lr": fine_tune_lr,
+                    "loss": loss,
+                    "loader": loader,
+                    **kwargs,
+                },
+            )
         )
         return self
 
@@ -234,19 +258,48 @@ class Pipeline:
             name = f"{index + 1}_{stage.kind}"
 
             if stage.kind == "prune":
+                options = dict(stage.options)
+                fine_tune_epochs = options.pop("fine_tune_epochs", 0)
+                fine_tune_lr = options.pop("fine_tune_lr", 0.005)
+                distill_loss = options.pop("loss", "kd")
+                explicit_loader = options.pop("loader", None)
+                train_data = explicit_loader if explicit_loader is not None else self.train_loader
+
+                if fine_tune_epochs > 0 and train_data is None:
+                    raise ValueError(
+                        "pruning with fine_tune_epochs needs training data — pass train_loader= to "
+                        "Pipeline() or loader= to .prune()"
+                    )
+
                 pruner = StructuredPruner(
-                    self.model, example, PruneConfig(**stage.options), loader=self.calibration_loader
+                    self.model, example, PruneConfig(**options), loader=self.calibration_loader
                 )
+
+                def on_step(m, step_taken):
+                    recalibrate_bn(m, self.calibration_loader, batches=8)
+                    if fine_tune_epochs > 0:
+                        log(f"  [step {step_taken}/{pruner.config.steps}] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
+                        distill(m, self.original, train_data, DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss))
+                        recalibrate_bn(m, self.calibration_loader, batches=8)
+
                 # BN statistics go stale the moment channels are removed, so
                 # refresh them between iterative steps or the next importance
                 # ranking is computed on a mis-normalised network.
-                pruner.run(
-                    between_steps=lambda m, _: recalibrate_bn(m, self.calibration_loader, batches=8)
-                )
+                pruner.run(between_steps=on_step)
+
+                # Also fine-tune the final pruned architecture if fine_tune_epochs was requested
+                if fine_tune_epochs > 0:
+                    log(f"  [step {pruner.config.steps}/{pruner.config.steps} final] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
+                    distill(self.model, self.original, train_data, DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss))
+                    recalibrate_bn(self.model, self.calibration_loader, batches=8)
+
                 self.model = pruner.model
                 prune_stats = pruner.stats()
                 log(f"  {prune_stats.summary()}")
-                measurement = self._measure(name, self.model, notes=prune_stats.summary())
+                notes = prune_stats.summary()
+                if fine_tune_epochs > 0:
+                    notes += f" | {pruner.config.steps} steps x {fine_tune_epochs} ft epochs"
+                measurement = self._measure(name, self.model, notes=notes)
 
             elif stage.kind == "recover":
                 recalibrate_bn(self.model, self.calibration_loader, batches=stage.options.get("batches"))

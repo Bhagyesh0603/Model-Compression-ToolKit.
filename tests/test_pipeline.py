@@ -334,3 +334,19 @@ class TestExcludeLayers:
             pipe.quantize(
                 precision="int8", exclude_layers=["no_such_layer"], allow_slow_int8=True
             ).run(verbose=False)
+
+
+class TestIterativePruning:
+    def test_prune_fine_tune_requires_training_data(self, model, loader, tmp_path):
+        pipe = Pipeline(model, loader, loader, workdir=tmp_path, runs=4, warmup=1)
+        pipe.prune(0.5, steps=2, fine_tune_epochs=1)
+        with pytest.raises(ValueError, match="needs training data"):
+            pipe.run(verbose=False)
+
+    def test_iterative_prune_with_fine_tune_runs_successfully(self, model, loader, tmp_path):
+        pipe = Pipeline(model, loader, loader, train_loader=loader, workdir=tmp_path, runs=4, warmup=1)
+        result = pipe.prune(0.5, steps=2, fine_tune_epochs=1).run(verbose=False)
+        assert len(result.stages) == 1
+        assert result.stages[0].stage == "1_prune"
+        assert result.final.parameters < result.baseline.parameters
+

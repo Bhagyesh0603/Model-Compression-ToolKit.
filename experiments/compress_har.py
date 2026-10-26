@@ -36,6 +36,8 @@ def main(argv=None) -> int:
                         help="checkpoint from experiments/import_har_checkpoint.py")
     parser.add_argument("--ratio", type=float, default=0.3, help="pruning ratio")
     parser.add_argument("--align", type=int, default=16)
+    parser.add_argument("--steps", type=int, default=1, help="iterative pruning steps")
+    parser.add_argument("--fine-tune-epochs", type=int, default=0, help="fine-tuning epochs per pruning step")
     parser.add_argument("--precision", default="auto", choices=["auto", "int8", "fp16"])
     parser.add_argument("--distill", type=int, default=0, help="distillation epochs (0 = skip)")
     parser.add_argument("--loss", default="dkd", choices=["kd", "dkd"])
@@ -51,7 +53,7 @@ def main(argv=None) -> int:
 
     calib = calibration_loader(n=512, batch_size=32)
     test = test_loader(batch_size=64)
-    train = train_loader(batch_size=64) if args.distill else None
+    train = train_loader(batch_size=64) if (args.distill or args.fine_tune_epochs) else None
 
     print("per-layer sensitivity (224x224 forward passes — this step is the slow one):")
     sensitivity = analyze(model, calib, batches=4)
@@ -61,8 +63,14 @@ def main(argv=None) -> int:
                     input_shape=INPUT_SHAPE, workdir="artifacts/har_resnet18")
 
     if args.ratio > 0:
-        pipe.prune(ratio=args.ratio, align=args.align,
-                  ratio_overrides=sensitivity.prune_ratios(args.ratio)).recover()
+        pipe.prune(
+            ratio=args.ratio,
+            align=args.align,
+            steps=args.steps,
+            fine_tune_epochs=args.fine_tune_epochs,
+            loss=args.loss,
+            ratio_overrides=sensitivity.prune_ratios(args.ratio),
+        ).recover()
     if args.distill:
         pipe.distill(epochs=args.distill, loss=args.loss)
     pipe.quantize(precision=args.precision)

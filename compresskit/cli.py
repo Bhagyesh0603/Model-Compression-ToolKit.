@@ -106,7 +106,13 @@ def cmd_pipeline(args) -> int:
 
     pipe = Pipeline(model, calib, test, train_loader=train, workdir=args.workdir)
     if args.prune:
-        pipe.prune(ratio=args.prune, align=args.align, steps=args.steps)
+        pipe.prune(
+            ratio=args.prune,
+            align=args.align,
+            steps=args.steps,
+            fine_tune_epochs=args.fine_tune_epochs,
+            loss=args.loss,
+        )
         pipe.recover()
     if args.distill:
         pipe.distill(epochs=args.distill, loss=args.loss)
@@ -195,6 +201,7 @@ def build_parser() -> argparse.ArgumentParser:
     pipe.add_argument("--prune", type=float, default=0.0, help="structured pruning ratio")
     pipe.add_argument("--align", type=int, default=16, help="SIMD channel alignment")
     pipe.add_argument("--steps", type=int, default=1, help="iterative pruning steps")
+    pipe.add_argument("--fine-tune-epochs", type=int, default=0, help="fine-tuning epochs per pruning step")
     pipe.add_argument("--distill", type=int, default=0, help="distillation epochs")
     pipe.add_argument("--loss", default="dkd", choices=["kd", "dkd"])
     pipe.add_argument("--precision", default="auto", choices=["auto", "int8", "fp16", "fp32"])
