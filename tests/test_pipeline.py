@@ -350,3 +350,12 @@ class TestIterativePruning:
         assert result.stages[0].stage == "1_prune"
         assert result.final.parameters < result.baseline.parameters
 
+    def test_every_fine_tune_step_acts_on_the_pruned_model(self, model, loader, tmp_path):
+        """The pruner works on a deep copy; the last fine-tune once hit the stale unpruned model,
+        so the log reported the unpruned model's accuracy for the final step."""
+        pipe = Pipeline(model, loader, loader, train_loader=loader, workdir=tmp_path, runs=4, warmup=1)
+        result = pipe.prune(0.5, steps=3, fine_tune_epochs=1).run(verbose=False)
+        assert [row["step"] for row in result.prune_history] == [1, 2, 3]
+        assert result.prune_history[-1]["params"] == result.prune_stats["params_after"]
+        assert result.prune_history[-1]["params"] < result.baseline.parameters
+

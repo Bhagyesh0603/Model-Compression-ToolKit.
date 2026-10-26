@@ -319,9 +319,11 @@ class Pipeline:
                 pruner.run(between_steps=on_step)
 
                 # The last cut has no `between_steps` call after it, so it gets
-                # the same cut -> fine-tune treatment here.
+                # the same cut -> fine-tune treatment here. It must act on
+                # `pruner.model`: the pruner works on its own deep copy, so
+                # `self.model` is still the unpruned network at this point.
                 if fine_tune_epochs > 0:
-                    fine_tune_step(self.model, pruner.config.steps)
+                    fine_tune_step(pruner.model, pruner.config.steps)
 
                 self.model = pruner.model
                 prune_stats = pruner.stats()
