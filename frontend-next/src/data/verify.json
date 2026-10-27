@@ -1,0 +1,14 @@
+{
+ "model": "ResNet-20",
+ "images": 1000,
+ "original_accuracy": 0.923,
+ "compressed_accuracy": 0.832,
+ "agreement": 0.861,
+ "provenance": {
+  "kind": "measured",
+  "host": "Apple M5",
+  "machine": "arm64",
+  "date": "2026-10-27",
+  "where": "experiments/verify_onnx.py logic on artifacts/demo/3_quantize.onnx, first 1000 CIFAR-10 test images"
+ }
+}

@@ -1,0 +1,104 @@
+{
+ "notebooks": [
+  {
+   "slug": "compresskit-end-to-end",
+   "title": "End to end",
+   "path": "kaggle/compresskit_end_to_end.ipynb",
+   "blurb": "One notebook for any supported model: train a baseline if needed, prune, fine-tune, quantize, evaluate, report.",
+   "cells": [
+    {
+     "type": "markdown",
+     "source": "# CompressKit \u2014 end-to-end on Kaggle (one notebook, **Run All**)\n\n`train FP32 baseline \u2192 gradual prune + fine-tune \u2192 quantize (always last) \u2192 evaluate the exported .onnx \u2192 report`\n\n**Before running:** right panel \u2192 *Accelerator: GPU T4*, *Internet: ON*. For the HAR model, *Add Input* \u2192\n*Human Action Recognition (HAR) Dataset*. Then edit only the config cell below.\n\nOutputs land in `/kaggle/working/compresskit_output/`: the final `model.onnx`, `report.html`, `results.json`.\n**Latency in this run is Kaggle-CPU latency**, not your deployment target \u2014 measure that with\n`compresskit bench model.onnx` on the target machine (see the last cell)."
+    },
+    {
+     "type": "code",
+     "source": "# ======================= CONFIG \u2014 the only cell you edit =======================\nMODEL      = \"har_resnet18\"   # \"har_resnet18\" | \"resnet20\" | \"resnet56\" | \"vgg16_bn\" | \"custom\"\nMODE       = \"manual\"         # \"manual\": you choose the schedule | \"auto\": give a budget, it finds the least compression\n\n# --- manual mode ---\nPRUNE_RATIO = 0.5             # fraction of channels to remove\nSTEPS       = 5               # gradual pruning steps\nFT_EPOCHS   = 5               # fine-tune epochs after each step\nLOSS        = \"dkd\"           # \"kd\" | \"dkd\"\n\n# --- auto mode (accuracy/size budgets are valid on Kaggle; a latency budget would be Kaggle-CPU latency) ---\nBUDGET      = \"accuracy_drop<1%,size<5mb\"\n\nPRECISION   = \"int8\"          # Kaggle's CPU has no fast INT8, but we still build the INT8 model for your target\nTRAIN_EPOCHS = None           # None = default (60 for CIFAR models, 10 for pretrained HAR/custom)\n\n# --- bring your own data / model (MODEL = \"custom\") ---\nDATA_DIR    = \"/kaggle/input/my-dataset\"   # one sub-folder per class\nINPUT_SIZE  = 224\nMODEL_FILE  = None            # path to a .pt saved with compresskit's save_model; None = train a pretrained ResNet-18\n# ==============================================================================="
+    },
+    {
+     "type": "code",
+     "source": "import os, subprocess, sys, shutil, json, pathlib\nREPO = \"https://github.com/Bhagyesh0603/Model-Compression-ToolKit..git\"\nif not os.path.exists(\"/kaggle/working/compresskit_repo\"):\n    subprocess.run([\"git\", \"clone\", \"-q\", REPO, \"/kaggle/working/compresskit_repo\"], check=True)\nos.chdir(\"/kaggle/working/compresskit_repo\")\nsubprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-q\", \"-e\", \".\"], check=True)\n\nimport torch\nprint(\"GPU:\", torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NONE \u2014 enable GPU in the right panel, then Restart & Run All\")"
+    },
+    {
+     "type": "code",
+     "source": "ARCH, DATASET, DATA_ROOT = {\n    \"har_resnet18\": (\"har_resnet18\", \"har\", None),\n    \"resnet20\":     (\"resnet20\", \"cifar10\", None),\n    \"resnet56\":     (\"resnet56\", \"cifar10\", None),\n    \"vgg16_bn\":     (\"vgg16_bn\", \"cifar10\", None),\n    \"custom\":       (\"har_resnet18\", \"folder\", DATA_DIR),\n}[MODEL]\n\nOUT  = pathlib.Path(\"/kaggle/working/compresskit_output\"); OUT.mkdir(parents=True, exist_ok=True)\nWORK = \"/kaggle/working/work\"\nCKPT = MODEL_FILE or f\"checkpoints/{MODEL}_fp32.pt\"\n\ndef run(args):\n    args = [str(a) for a in args]\n    print(\"$ compresskit\", \" \".join(args), flush=True)\n    code = subprocess.run([sys.executable, \"-m\", \"compresskit.cli\", *args]).returncode\n    return code\n\ndata_args = [\"--dataset\", DATASET, \"--input-size\", INPUT_SIZE] + ([\"--data-root\", DATA_ROOT] if DATA_ROOT else [])"
+    },
+    {
+     "type": "markdown",
+     "source": "## 1 \u00b7 Train the FP32 baseline (skipped if the checkpoint already exists)"
+    },
+    {
+     "type": "code",
+     "source": "if MODEL_FILE is None:\n    train_args = [\"train\", \"--arch\", ARCH, \"--out\", CKPT, \"--skip-if-exists\", *data_args]\n    if TRAIN_EPOCHS: train_args += [\"--epochs\", TRAIN_EPOCHS]\n    assert run(train_args) == 0, \"training failed\"\nelse:\n    print(\"using provided model:\", MODEL_FILE)"
+    },
+    {
+     "type": "markdown",
+     "source": "## 2 \u00b7 Compress: gradual prune + fine-tune \u2192 quantize \u2192 evaluate the .onnx"
+    },
+    {
+     "type": "code",
+     "source": "common = [\"--model\", CKPT, *data_args, \"--precision\", PRECISION, \"--allow-slow-int8\", \"--workdir\", WORK,\n          \"--report\", OUT / \"report.html\", \"--json\", OUT / \"results.json\", \"--loss\", LOSS]\nif MODE == \"manual\":\n    code = run([\"pipeline\", *common, \"--prune\", PRUNE_RATIO, \"--steps\", STEPS, \"--fine-tune-epochs\", FT_EPOCHS])\nelse:\n    code = run([\"compress\", *common, \"--budget\", BUDGET, \"--steps\", STEPS, \"--fine-tune-epochs\", FT_EPOCHS])\nprint(\"exit code\", code, \"(auto mode returns 1 if the budget was not met \u2014 the best attempt is still saved)\")"
+    },
+    {
+     "type": "markdown",
+     "source": "## 3 \u00b7 Collect the outputs"
+    },
+    {
+     "type": "code",
+     "source": "results = json.loads((OUT / \"results.json\").read_text())\nfinal = results[\"stages\"][-1]\nshutil.copy(final[\"artifact\"], OUT / \"model.onnx\")\nbase = results[\"baseline\"]\nprint(f\"accuracy : {base['accuracy']*100:.2f}% -> {final['accuracy']*100:.2f}%  (drop {results['totals']['accuracy_drop_pp']:.2f} pp)\")\nprint(f\"size     : {base['size_mb']:.2f} MB -> {final['size_mb']:.2f} MB  ({results['totals']['size_reduction']:.2f}x smaller)\")\nprint(f\"precision: {final['precision']}\")\nprint(\"(latency in this run was measured on Kaggle's CPU \u2014 not your target)\")\nfor f in sorted(OUT.iterdir()): print(f\"{f.stat().st_size/1e6:8.2f} MB  {f.name}\")\nfrom IPython.display import IFrame, display\ndisplay(IFrame(str(OUT / \"report.html\"), width=\"100%\", height=900))"
+    },
+    {
+     "type": "markdown",
+     "source": "## 4 \u00b7 Verify speed on your real target (once, on your own machine)\n\nDownload `compresskit_output/` from the *Output* tab, then on the target machine:\n\n```bash\npip install -e .   # the repo\ncompresskit bench model.onnx --input-shape 1 3 224 224      # 1 3 32 32 for the CIFAR models\n```"
+    }
+   ]
+  },
+  {
+   "slug": "resnet56",
+   "title": "ResNet-56",
+   "path": "kaggle/resnet56_compression.ipynb",
+   "blurb": "ResNet-56 on CIFAR-10 with a bundled baseline checkpoint, plus a check of the ONNX file against the original.",
+   "cells": [
+    {
+     "type": "markdown",
+     "source": "# Compress ResNet-56 (CIFAR-10) \u2014 complete Kaggle notebook\n\n`ResNet-56 (FP32, 56 layers)  \u2192  gradual prune + fine-tune  \u2192  INT8 quantize  \u2192  ONNX  \u2192  verify against the original`\n\nThe ResNet-56 baseline (92%+ on CIFAR-10) ships inside the repo, so **no training step**.\n\n**Before Run All** (right panel): *Accelerator \u2192 GPU T4*, *Internet \u2192 On*.\nOptional but saves ~30 min: *Add Input \u2192 search \"CIFAR-10\"* and attach any CIFAR-10 dataset in the\noriginal python-pickle format (it must contain a `cifar-10-batches-py` folder). Otherwise it downloads (170 MB).\n\nEverything lands in `/kaggle/working/` \u2014 download `resnet56_compressed.zip` from the *Output* tab."
+    },
+    {
+     "type": "code",
+     "source": "# ======================= CONFIG =======================\nPRUNE_RATIO = 0.5    # fraction of channels removed (0.5 channels ~ 75% fewer parameters)\nSTEPS       = 5      # gradual pruning steps\nFT_EPOCHS   = 5      # fine-tune epochs after every step (25 total)\nLOSS        = \"dkd\"  # \"kd\" | \"dkd\"\n# ======================================================"
+    },
+    {
+     "type": "code",
+     "source": "import os, subprocess, sys, json, shutil, pathlib\nREPO = \"https://github.com/Bhagyesh0603/Model-Compression-ToolKit..git\"\nif not os.path.exists(\"/kaggle/working/ck\"):\n    subprocess.run([\"git\", \"clone\", \"-q\", REPO, \"/kaggle/working/ck\"], check=True)\nos.chdir(\"/kaggle/working/ck\")\nsubprocess.run([sys.executable, \"-m\", \"pip\", \"install\", \"-q\", \"-e\", \".\"], check=True)\n\nimport torch\nprint(\"GPU:\", torch.cuda.get_device_name(0) if torch.cuda.is_available() else \"NONE -> enable GPU in the right panel, then Restart & Run All\")\nfrom compresskit.zoo.data import resolve_root\nprint(\"CIFAR-10 location:\", resolve_root(), \"(attached dataset if under /kaggle/input, else it will download)\")\nassert os.path.exists(\"checkpoints/resnet56_fp32.pt\"), \"baseline checkpoint missing from the repo\"\n\ndef run(*args):\n    args = [str(a) for a in args]\n    print(\"$\", \" \".join(args), flush=True)\n    return subprocess.run(args).returncode"
+    },
+    {
+     "type": "markdown",
+     "source": "## 1 \u00b7 Compress: gradual prune + fine-tune \u2192 INT8 \u2192 evaluate the .onnx"
+    },
+    {
+     "type": "code",
+     "source": "OUT = \"/kaggle/working\"\ncode_ = run(sys.executable, \"-m\", \"compresskit.cli\", \"pipeline\",\n            \"--model\", \"checkpoints/resnet56_fp32.pt\",\n            \"--prune\", PRUNE_RATIO, \"--steps\", STEPS, \"--fine-tune-epochs\", FT_EPOCHS, \"--loss\", LOSS,\n            \"--precision\", \"int8\", \"--allow-slow-int8\",\n            \"--workdir\", f\"{OUT}/work\", \"--report\", f\"{OUT}/report.html\", \"--json\", f\"{OUT}/results.json\")\nassert code_ == 0, \"pipeline failed - read the log above\""
+    },
+    {
+     "type": "markdown",
+     "source": "## 2 \u00b7 Does the compressed model actually work? (original vs ONNX on 2000 real test images)"
+    },
+    {
+     "type": "code",
+     "source": "r = json.load(open(f\"{OUT}/results.json\"))\nfinal_onnx = r[\"stages\"][-1][\"artifact\"]\nshutil.copy(final_onnx, f\"{OUT}/model.onnx\")\nshutil.copy(\"checkpoints/resnet56_fp32.pt\", f\"{OUT}/resnet56_fp32.pt\")\nrun(sys.executable, \"experiments/verify_onnx.py\", \"--model\", \"checkpoints/resnet56_fp32.pt\",\n    \"--onnx\", f\"{OUT}/model.onnx\", \"--images\", 2000)"
+    },
+    {
+     "type": "markdown",
+     "source": "## 3 \u00b7 Summary and download bundle"
+    },
+    {
+     "type": "code",
+     "source": "b, f, t = r[\"baseline\"], r[\"stages\"][-1], r[\"totals\"]\nprint(f\"accuracy : {b['accuracy']*100:.2f}% -> {f['accuracy']*100:.2f}%   (drop {t['accuracy_drop_pp']:.2f} pp)\")\nprint(f\"size     : {b['size_mb']:.2f} MB -> {f['size_mb']:.2f} MB   ({t['size_reduction']:.1f}x smaller)\")\nprint(f\"precision: {f['precision']}\")\nprint(\"NOTE: latency in this run is Kaggle-CPU latency, not your device. Measure on the target: compresskit bench model.onnx\")\n\nimport zipfile\nwith zipfile.ZipFile(f\"{OUT}/resnet56_compressed.zip\", \"w\", zipfile.ZIP_DEFLATED) as z:\n    for name in (\"model.onnx\", \"report.html\", \"results.json\", \"resnet56_fp32.pt\"):\n        z.write(f\"{OUT}/{name}\", name)\nprint(\"bundle:\", f\"{OUT}/resnet56_compressed.zip\", f\"({os.path.getsize(f'{OUT}/resnet56_compressed.zip')/1e6:.1f} MB)\")\nfrom IPython.display import IFrame, display\ndisplay(IFrame(f\"{OUT}/report.html\", width=\"100%\", height=900))"
+    },
+    {
+     "type": "markdown",
+     "source": "## 4 \u00b7 On your Mac (real speed check, once)\n\n```bash\nunzip resnet56_compressed.zip\npython experiments/verify_onnx.py --model resnet56_fp32.pt --onnx model.onnx\ncompresskit bench model.onnx\n```"
+    }
+   ]
+  }
+ ]
+}

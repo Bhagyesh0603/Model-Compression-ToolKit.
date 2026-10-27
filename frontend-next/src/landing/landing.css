@@ -194,3 +194,22 @@
     animation: none;
   }
 }
+
+/* --- Hero entrance: staggered blur-rise that waits for the opening curtain ----- */
+
+.ss-rise {
+  --ss-base: 1.55s; /* the curtain is opening; the first words arrive as it clears */
+  animation: ss-rise 0.95s cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--ss-base) + var(--ss-d, 0s)) both;
+}
+
+[data-intro='skip'] .ss-rise {
+  --ss-base: 0.1s;
+}
+
+@keyframes ss-rise {
+  from {
+    opacity: 0;
+    transform: translateY(0.45em);
+    filter: blur(10px);
+  }
+}

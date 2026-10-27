@@ -6,10 +6,12 @@ build/
 dist/
 
 # CIFAR-10 download, trained checkpoints, and per-run ONNX artifacts
-data/
+/data/
 checkpoints/
 artifacts/
 *.onnx
+# The site serves two small ONNX files and its recorded data from frontend-next/.
+!frontend-next/public/models/*.onnx
 *.pt
 
 .DS_Store

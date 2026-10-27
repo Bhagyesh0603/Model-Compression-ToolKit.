@@ -1,0 +1,200 @@
+{
+ "model": "ResNet-20",
+ "provenance": {
+  "kind": "measured",
+  "host": "Apple M5",
+  "machine": "arm64",
+  "date": "2026-10-27",
+  "where": "compresskit.search.compress, shortened recovery schedules"
+ },
+ "runs": [
+  {
+   "title": "meets with quantization alone",
+   "budget": "accuracy_drop<1%,size<0.4mb",
+   "described": "accuracy drop <= 1 pp, size <= 0.4 MB",
+   "met": true,
+   "chosen": "quantize-only",
+   "attempts": [
+    {
+     "label": "quantize-only",
+     "plan": "quantize",
+     "met": true,
+     "failures": [],
+     "accuracy": 0.9154,
+     "median_ms": 0.8775835012784228,
+     "size_mb": 0.31473731994628906,
+     "precision": "int8",
+     "efficiency": 0.7092477609063298
+    }
+   ],
+   "baseline": {
+    "accuracy": 0.9154,
+    "median_ms": 1.621416500711348,
+    "size_mb": 1.045663833618164
+   }
+  },
+  {
+   "title": "needs pruning and distillation",
+   "budget": "latency<0.45ms,accuracy_drop<8%",
+   "described": "latency <= 0.45 ms, accuracy drop <= 8 pp",
+   "met": true,
+   "chosen": "prune@0.788+distill+quantize",
+   "attempts": [
+    {
+     "label": "quantize-only",
+     "plan": "quantize",
+     "met": false,
+     "failures": [
+      "latency 0.747 ms > 0.450 ms"
+     ],
+     "accuracy": 0.916015625,
+     "median_ms": 0.7472500001313165,
+     "size_mb": 0.31473731994628906,
+     "precision": "int8",
+     "efficiency": 0.7854289263122392
+    },
+    {
+     "label": "prune@0.450+quantize",
+     "plan": "prune(0.450, align=16) -> recover -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.508 ms > 0.450 ms",
+      "accuracy drop 63.67 pp > 8.00 pp"
+     ],
+     "accuracy": 0.28125,
+     "median_ms": 0.5079374968772754,
+     "size_mb": 0.16191959381103516,
+     "precision": "int8",
+     "efficiency": 0.41590722257409957
+    },
+    {
+     "label": "prune@0.675+quantize",
+     "plan": "prune(0.675, align=16) -> recover -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.466 ms > 0.450 ms",
+      "accuracy drop 72.80 pp > 8.00 pp"
+     ],
+     "accuracy": 0.18994140625,
+     "median_ms": 0.4657910030800849,
+     "size_mb": 0.11477947235107422,
+     "precision": "int8",
+     "efficiency": 0.3083216408147218
+    },
+    {
+     "label": "prune@0.788+quantize",
+     "plan": "prune(0.788, align=16) -> recover -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.568 ms > 0.450 ms",
+      "accuracy drop 73.78 pp > 8.00 pp"
+     ],
+     "accuracy": 0.18017578125,
+     "median_ms": 0.5679585010511801,
+     "size_mb": 0.10573959350585938,
+     "precision": "int8",
+     "efficiency": 0.29558249596696096
+    },
+    {
+     "label": "prune@0.788+distill+quantize",
+     "plan": "prune(0.788, 2 steps x 1 ft epochs) -> recover -> distill(dkd) -> quantize",
+     "met": true,
+     "failures": [],
+     "accuracy": 0.8496,
+     "median_ms": 0.3609160048654303,
+     "size_mb": 0.10576534271240234,
+     "precision": "int8",
+     "efficiency": 0.8354234177621793
+    }
+   ],
+   "baseline": {
+    "accuracy": 0.91796875,
+    "median_ms": 2.3052710021147504,
+    "size_mb": 1.045663833618164
+   }
+  },
+  {
+   "title": "cannot be met",
+   "budget": "latency<0.02ms,accuracy_drop<0.5%",
+   "described": "latency <= 0.02 ms, accuracy drop <= 0.5 pp",
+   "met": false,
+   "chosen": "prune@0.788+distill+quantize",
+   "attempts": [
+    {
+     "label": "quantize-only",
+     "plan": "quantize",
+     "met": false,
+     "failures": [
+      "latency 0.734 ms > 0.020 ms"
+     ],
+     "accuracy": 0.916015625,
+     "median_ms": 0.7341245000134222,
+     "size_mb": 0.31473731994628906,
+     "precision": "int8",
+     "efficiency": 0.7604818136254033
+    },
+    {
+     "label": "prune@0.450+quantize",
+     "plan": "prune(0.450, align=16) -> recover -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.494 ms > 0.020 ms",
+      "accuracy drop 67.04 pp > 0.50 pp"
+     ],
+     "accuracy": 0.24755859375,
+     "median_ms": 0.4940215003443882,
+     "size_mb": 0.1528778076171875,
+     "precision": "int8",
+     "efficiency": 0.3796354682991882
+    },
+    {
+     "label": "prune@0.675+quantize",
+     "plan": "prune(0.675, align=16) -> recover -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.595 ms > 0.020 ms",
+      "accuracy drop 75.44 pp > 0.50 pp"
+     ],
+     "accuracy": 0.16357421875,
+     "median_ms": 0.5954164953436702,
+     "size_mb": 0.10791206359863281,
+     "precision": "int8",
+     "efficiency": 0.27081359702459723
+    },
+    {
+     "label": "prune@0.788+quantize",
+     "plan": "prune(0.788, align=16) -> recover -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.401 ms > 0.020 ms",
+      "accuracy drop 76.12 pp > 0.50 pp"
+     ],
+     "accuracy": 0.15673828125,
+     "median_ms": 0.4006460039818194,
+     "size_mb": 0.09887218475341797,
+     "precision": "int8",
+     "efficiency": 0.26376944574628414
+    },
+    {
+     "label": "prune@0.788+distill+quantize",
+     "plan": "prune(0.788, 2 steps x 1 ft epochs) -> recover -> distill(dkd) -> quantize",
+     "met": false,
+     "failures": [
+      "latency 0.355 ms > 0.020 ms",
+      "accuracy drop 7.26 pp > 0.50 pp"
+     ],
+     "accuracy": 0.8428,
+     "median_ms": 0.35510350062395446,
+     "size_mb": 0.0989065170288086,
+     "precision": "int8",
+     "efficiency": 0.8350053556300076
+    }
+   ],
+   "baseline": {
+    "accuracy": 0.91796875,
+    "median_ms": 1.8407914976705797,
+    "size_mb": 1.045663833618164
+   }
+  }
+ ]
+}

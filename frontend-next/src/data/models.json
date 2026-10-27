@@ -1,0 +1,938 @@
+{
+ "models": [
+  {
+   "name": "ResNet-20",
+   "arch": "resnet20",
+   "dataset": "CIFAR-10",
+   "schedule": "prune 0.5 channels, 3 steps x 2 DKD fine-tune epochs, INT8",
+   "source": "artifacts/demo/results.json",
+   "provenance": {
+    "kind": "measured",
+    "host": "Apple M5",
+    "machine": "arm64",
+    "date": "2026-10-27",
+    "where": "local run",
+    "note": "Apple M5, fast INT8"
+   },
+   "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "cpu": "Apple M5",
+    "logical_cores": 10,
+    "performance_cores": 4,
+    "features": [
+     "bf16",
+     "dotprod",
+     "fp16",
+     "i8mm",
+     "neon"
+    ],
+    "int8_speed": "fast",
+    "versions": {
+     "python": "3.14.7",
+     "torch": "2.14.0",
+     "onnxruntime": "1.29.0",
+     "numpy": "2.5.2"
+    }
+   },
+   "baseline": {
+    "stage": "baseline",
+    "precision": "fp32",
+    "accuracy": 0.9154,
+    "median_ms": 1.4521664998028427,
+    "p95_ms": 1.9331669973325916,
+    "size_mb": 1.045663833618164,
+    "parameters": 272474,
+    "notes": "",
+    "recall": [
+     0.913,
+     0.972,
+     0.887,
+     0.828,
+     0.933,
+     0.85,
+     0.939,
+     0.934,
+     0.957,
+     0.941
+    ],
+    "support": [
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000
+    ],
+    "artifact": "baseline.onnx"
+   },
+   "stages": [
+    {
+     "stage": "1_prune",
+     "precision": "fp32",
+     "accuracy": 0.8397,
+     "median_ms": 0.6486879992735339,
+     "p95_ms": 0.7465000016964041,
+     "size_mb": 0.2701263427734375,
+     "parameters": 68786,
+     "notes": "params 272,474 -> 68,786 (74.8% removed)  MACs 41.2M -> 10.5M (74.5% removed)\n! SIMD alignment tightened per layer instead of relaxed for everyone: {'conv1': 8, 'layer1.0.conv1': 8, 'layer1.0.conv2': 8, 'layer1.1.conv1': 8, 'layer1.1.conv2': 8, 'layer1.2.conv1': 8, 'layer1.2.conv2': 8} use a smaller alignment than the requested 16 because their own width can't fit two aligned blocks at that ratio \u2014 every other layer keeps the full 16-alignment | 3 steps x 2 ft epochs",
+     "recall": [
+      0.873,
+      0.934,
+      0.741,
+      0.714,
+      0.834,
+      0.783,
+      0.852,
+      0.879,
+      0.897,
+      0.89
+     ],
+     "support": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+     ],
+     "artifact": "1_prune.onnx"
+    },
+    {
+     "stage": "2_recover",
+     "precision": "fp32",
+     "accuracy": 0.8397,
+     "median_ms": 0.6707919983455213,
+     "p95_ms": 0.8699589998286683,
+     "size_mb": 0.2701263427734375,
+     "parameters": 68786,
+     "notes": "BN statistics re-estimated",
+     "recall": [
+      0.873,
+      0.934,
+      0.741,
+      0.714,
+      0.834,
+      0.783,
+      0.852,
+      0.879,
+      0.897,
+      0.89
+     ],
+     "support": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+     ],
+     "artifact": "2_recover.onnx"
+    },
+    {
+     "stage": "3_quantize",
+     "precision": "int8",
+     "accuracy": 0.84,
+     "median_ms": 0.45991600018169265,
+     "p95_ms": 0.4842079979425762,
+     "size_mb": 0.11478710174560547,
+     "parameters": 68786,
+     "notes": "precision auto-selected: int8 \u2014 INT8 has fused kernels here (i8mm, dotprod) \u2014 expect a real latency win.",
+     "recall": [
+      0.876,
+      0.939,
+      0.739,
+      0.719,
+      0.834,
+      0.775,
+      0.854,
+      0.879,
+      0.897,
+      0.888
+     ],
+     "support": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+     ],
+     "artifact": "3_quantize.onnx"
+    }
+   ],
+   "prune_stats": {
+    "params_before": 272474,
+    "params_after": 68786,
+    "macs_before": 41218698.0,
+    "macs_after": 10516810.0,
+    "ratio_requested": 0.5,
+    "align": 16,
+    "align_effective": 8,
+    "steps": 3,
+    "channels": {
+     "conv1": [
+      16,
+      8
+     ],
+     "layer1.0.conv1": [
+      16,
+      8
+     ],
+     "layer1.0.conv2": [
+      16,
+      8
+     ],
+     "layer1.1.conv1": [
+      16,
+      8
+     ],
+     "layer1.1.conv2": [
+      16,
+      8
+     ],
+     "layer1.2.conv1": [
+      16,
+      8
+     ],
+     "layer1.2.conv2": [
+      16,
+      8
+     ],
+     "layer2.0.conv1": [
+      32,
+      16
+     ],
+     "layer2.0.conv2": [
+      32,
+      16
+     ],
+     "layer2.0.downsample.0": [
+      32,
+      16
+     ],
+     "layer2.1.conv1": [
+      32,
+      16
+     ],
+     "layer2.1.conv2": [
+      32,
+      16
+     ],
+     "layer2.2.conv1": [
+      32,
+      16
+     ],
+     "layer2.2.conv2": [
+      32,
+      16
+     ],
+     "layer3.0.conv1": [
+      64,
+      32
+     ],
+     "layer3.0.conv2": [
+      64,
+      32
+     ],
+     "layer3.0.downsample.0": [
+      64,
+      32
+     ],
+     "layer3.1.conv1": [
+      64,
+      32
+     ],
+     "layer3.1.conv2": [
+      64,
+      32
+     ],
+     "layer3.2.conv1": [
+      64,
+      32
+     ],
+     "layer3.2.conv2": [
+      64,
+      32
+     ],
+     "fc": [
+      10,
+      10
+     ]
+    },
+    "warnings": [
+     "SIMD alignment tightened per layer instead of relaxed for everyone: {'conv1': 8, 'layer1.0.conv1': 8, 'layer1.0.conv2': 8, 'layer1.1.conv1': 8, 'layer1.1.conv2': 8, 'layer1.2.conv1': 8, 'layer1.2.conv2': 8} use a smaller alignment than the requested 16 because their own width can't fit two aligned blocks at that ratio \u2014 every other layer keeps the full 16-alignment"
+    ]
+   },
+   "prune_history": [
+    {
+     "step": 1,
+     "params": 185290,
+     "acc_after_cut": 0.6928,
+     "acc_after_finetune": 0.8763
+    },
+    {
+     "step": 2,
+     "params": 117267,
+     "acc_after_cut": 0.6336,
+     "acc_after_finetune": 0.8626
+    },
+    {
+     "step": 3,
+     "params": 68786,
+     "acc_after_cut": 0.4982,
+     "acc_after_finetune": 0.8397
+    }
+   ],
+   "quantization": {
+    "precision": "int8",
+    "coverage": 1.0,
+    "quantized_ops": {
+     "Conv": 21,
+     "Gemm": 1
+    },
+    "unquantized_ops": {}
+   },
+   "totals": {
+    "accuracy_drop_pp": 7.540000000000003,
+    "speedup": 3.157460273678575,
+    "size_reduction": 9.109593479723836,
+    "efficiency_score": 0.8125075580356472,
+    "compression_score": 0.7867576888675525
+   },
+   "warnings": [
+    "precision auto-selected: int8 \u2014 INT8 has fused kernels here (i8mm, dotprod) \u2014 expect a real latency win."
+   ],
+   "downloads": [
+    {
+     "label": "original FP32",
+     "href": "/models/resnet20-fp32.onnx",
+     "size_bytes": 1096458
+    },
+    {
+     "label": "compressed INT8",
+     "href": "/models/resnet20-int8.onnx",
+     "size_bytes": 120363
+    }
+   ]
+  },
+  {
+   "name": "ResNet-56",
+   "arch": "resnet56",
+   "dataset": "CIFAR-10",
+   "schedule": "prune 0.5 channels, 2 steps x 1 DKD fine-tune epoch, INT8 (short smoke run, not the full schedule)",
+   "source": "artifacts/r56smoke/results.json",
+   "provenance": {
+    "kind": "measured",
+    "host": "Apple M5",
+    "machine": "arm64",
+    "date": "2026-10-27",
+    "where": "local run",
+    "note": "short schedule; superseded by the full Kaggle run when supplied"
+   },
+   "host": {
+    "system": "Darwin",
+    "machine": "arm64",
+    "cpu": "Apple M5",
+    "logical_cores": 10,
+    "performance_cores": 4,
+    "features": [
+     "bf16",
+     "dotprod",
+     "fp16",
+     "i8mm",
+     "neon"
+    ],
+    "int8_speed": "fast",
+    "versions": {
+     "python": "3.14.7",
+     "torch": "2.14.0",
+     "onnxruntime": "1.29.0",
+     "numpy": "2.5.2"
+    }
+   },
+   "baseline": {
+    "stage": "baseline",
+    "precision": "fp32",
+    "accuracy": 0.9318,
+    "median_ms": 2.7293960010865703,
+    "p95_ms": 2.799875001073815,
+    "size_mb": 3.281416893005371,
+    "parameters": 855770,
+    "notes": "",
+    "recall": [
+     0.955,
+     0.969,
+     0.9,
+     0.847,
+     0.937,
+     0.898,
+     0.958,
+     0.946,
+     0.956,
+     0.952
+    ],
+    "support": [
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000,
+     1000
+    ],
+    "artifact": "baseline.onnx"
+   },
+   "stages": [
+    {
+     "stage": "1_prune",
+     "precision": "fp32",
+     "accuracy": 0.8173,
+     "median_ms": 0.936333501158515,
+     "p95_ms": 1.0315410036128014,
+     "size_mb": 0.8421363830566406,
+     "parameters": 215282,
+     "notes": "params 855,770 -> 215,282 (74.8% removed)  MACs 126.8M -> 32.1M (74.7% removed)\n! SIMD alignment tightened per layer instead of relaxed for everyone: {'conv1': 8, 'layer1.0.conv1': 8, 'layer1.0.conv2': 8, 'layer1.1.conv1': 8, 'layer1.1.conv2': 8, 'layer1.2.conv1': 8, 'layer1.2.conv2': 8, 'layer1.3.conv1': 8, 'layer1.3.conv2': 8, 'layer1.4.conv1': 8, 'layer1.4.conv2': 8, 'layer1.5.conv1': 8, 'layer1.5.conv2': 8, 'layer1.6.conv1': 8, 'layer1.6.conv2': 8, 'layer1.7.conv1': 8, 'layer1.7.conv2': 8, 'layer1.8.conv1': 8, 'layer1.8.conv2': 8} use a smaller alignment than the requested 16 because their own width can't fit two aligned blocks at that ratio \u2014 every other layer keeps the full 16-alignment | 2 steps x 1 ft epochs",
+     "recall": [
+      0.863,
+      0.901,
+      0.676,
+      0.746,
+      0.828,
+      0.719,
+      0.844,
+      0.843,
+      0.878,
+      0.875
+     ],
+     "support": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+     ],
+     "artifact": "1_prune.onnx"
+    },
+    {
+     "stage": "2_recover",
+     "precision": "fp32",
+     "accuracy": 0.8173,
+     "median_ms": 1.0267494981235359,
+     "p95_ms": 1.1520830012159422,
+     "size_mb": 0.8421363830566406,
+     "parameters": 215282,
+     "notes": "BN statistics re-estimated",
+     "recall": [
+      0.863,
+      0.901,
+      0.676,
+      0.746,
+      0.828,
+      0.719,
+      0.844,
+      0.843,
+      0.878,
+      0.875
+     ],
+     "support": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+     ],
+     "artifact": "2_recover.onnx"
+    },
+    {
+     "stage": "3_quantize",
+     "precision": "int8",
+     "accuracy": 0.8191,
+     "median_ms": 0.6642705011472572,
+     "p95_ms": 0.706582999555394,
+     "size_mb": 0.3353290557861328,
+     "parameters": 215282,
+     "notes": "precision auto-selected: int8 \u2014 INT8 has fused kernels here (i8mm, dotprod) \u2014 expect a real latency win.",
+     "recall": [
+      0.863,
+      0.904,
+      0.692,
+      0.752,
+      0.828,
+      0.712,
+      0.844,
+      0.841,
+      0.879,
+      0.876
+     ],
+     "support": [
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000,
+      1000
+     ],
+     "artifact": "3_quantize.onnx"
+    }
+   ],
+   "prune_stats": {
+    "params_before": 855770,
+    "params_after": 215282,
+    "macs_before": 126841482.0,
+    "macs_after": 32094538.0,
+    "ratio_requested": 0.5,
+    "align": 16,
+    "align_effective": 8,
+    "steps": 2,
+    "channels": {
+     "conv1": [
+      16,
+      8
+     ],
+     "layer1.0.conv1": [
+      16,
+      8
+     ],
+     "layer1.0.conv2": [
+      16,
+      8
+     ],
+     "layer1.1.conv1": [
+      16,
+      8
+     ],
+     "layer1.1.conv2": [
+      16,
+      8
+     ],
+     "layer1.2.conv1": [
+      16,
+      8
+     ],
+     "layer1.2.conv2": [
+      16,
+      8
+     ],
+     "layer1.3.conv1": [
+      16,
+      8
+     ],
+     "layer1.3.conv2": [
+      16,
+      8
+     ],
+     "layer1.4.conv1": [
+      16,
+      8
+     ],
+     "layer1.4.conv2": [
+      16,
+      8
+     ],
+     "layer1.5.conv1": [
+      16,
+      8
+     ],
+     "layer1.5.conv2": [
+      16,
+      8
+     ],
+     "layer1.6.conv1": [
+      16,
+      8
+     ],
+     "layer1.6.conv2": [
+      16,
+      8
+     ],
+     "layer1.7.conv1": [
+      16,
+      8
+     ],
+     "layer1.7.conv2": [
+      16,
+      8
+     ],
+     "layer1.8.conv1": [
+      16,
+      8
+     ],
+     "layer1.8.conv2": [
+      16,
+      8
+     ],
+     "layer2.0.conv1": [
+      32,
+      16
+     ],
+     "layer2.0.conv2": [
+      32,
+      16
+     ],
+     "layer2.0.downsample.0": [
+      32,
+      16
+     ],
+     "layer2.1.conv1": [
+      32,
+      16
+     ],
+     "layer2.1.conv2": [
+      32,
+      16
+     ],
+     "layer2.2.conv1": [
+      32,
+      16
+     ],
+     "layer2.2.conv2": [
+      32,
+      16
+     ],
+     "layer2.3.conv1": [
+      32,
+      16
+     ],
+     "layer2.3.conv2": [
+      32,
+      16
+     ],
+     "layer2.4.conv1": [
+      32,
+      16
+     ],
+     "layer2.4.conv2": [
+      32,
+      16
+     ],
+     "layer2.5.conv1": [
+      32,
+      16
+     ],
+     "layer2.5.conv2": [
+      32,
+      16
+     ],
+     "layer2.6.conv1": [
+      32,
+      16
+     ],
+     "layer2.6.conv2": [
+      32,
+      16
+     ],
+     "layer2.7.conv1": [
+      32,
+      16
+     ],
+     "layer2.7.conv2": [
+      32,
+      16
+     ],
+     "layer2.8.conv1": [
+      32,
+      16
+     ],
+     "layer2.8.conv2": [
+      32,
+      16
+     ],
+     "layer3.0.conv1": [
+      64,
+      32
+     ],
+     "layer3.0.conv2": [
+      64,
+      32
+     ],
+     "layer3.0.downsample.0": [
+      64,
+      32
+     ],
+     "layer3.1.conv1": [
+      64,
+      32
+     ],
+     "layer3.1.conv2": [
+      64,
+      32
+     ],
+     "layer3.2.conv1": [
+      64,
+      32
+     ],
+     "layer3.2.conv2": [
+      64,
+      32
+     ],
+     "layer3.3.conv1": [
+      64,
+      32
+     ],
+     "layer3.3.conv2": [
+      64,
+      32
+     ],
+     "layer3.4.conv1": [
+      64,
+      32
+     ],
+     "layer3.4.conv2": [
+      64,
+      32
+     ],
+     "layer3.5.conv1": [
+      64,
+      32
+     ],
+     "layer3.5.conv2": [
+      64,
+      32
+     ],
+     "layer3.6.conv1": [
+      64,
+      32
+     ],
+     "layer3.6.conv2": [
+      64,
+      32
+     ],
+     "layer3.7.conv1": [
+      64,
+      32
+     ],
+     "layer3.7.conv2": [
+      64,
+      32
+     ],
+     "layer3.8.conv1": [
+      64,
+      32
+     ],
+     "layer3.8.conv2": [
+      64,
+      32
+     ],
+     "fc": [
+      10,
+      10
+     ]
+    },
+    "warnings": [
+     "SIMD alignment tightened per layer instead of relaxed for everyone: {'conv1': 8, 'layer1.0.conv1': 8, 'layer1.0.conv2': 8, 'layer1.1.conv1': 8, 'layer1.1.conv2': 8, 'layer1.2.conv1': 8, 'layer1.2.conv2': 8, 'layer1.3.conv1': 8, 'layer1.3.conv2': 8, 'layer1.4.conv1': 8, 'layer1.4.conv2': 8, 'layer1.5.conv1': 8, 'layer1.5.conv2': 8, 'layer1.6.conv1': 8, 'layer1.6.conv2': 8, 'layer1.7.conv1': 8, 'layer1.7.conv2': 8, 'layer1.8.conv1': 8, 'layer1.8.conv2': 8} use a smaller alignment than the requested 16 because their own width can't fit two aligned blocks at that ratio \u2014 every other layer keeps the full 16-alignment"
+    ]
+   },
+   "prune_history": [
+    {
+     "step": 1,
+     "params": 482374,
+     "acc_after_cut": 0.6342,
+     "acc_after_finetune": 0.8685
+    },
+    {
+     "step": 2,
+     "params": 215282,
+     "acc_after_cut": 0.4635,
+     "acc_after_finetune": 0.8173
+    }
+   ],
+   "quantization": {
+    "precision": "int8",
+    "coverage": 1.0,
+    "quantized_ops": {
+     "Conv": 57,
+     "Gemm": 1
+    },
+    "unquantized_ops": {}
+   },
+   "totals": {
+    "accuracy_drop_pp": 11.26999999999999,
+    "speedup": 4.108862272782923,
+    "size_reduction": 9.785662281225648,
+    "efficiency_score": 0.8231383172410943,
+    "compression_score": 0.8272166511005248
+   },
+   "warnings": [
+    "precision auto-selected: int8 \u2014 INT8 has fused kernels here (i8mm, dotprod) \u2014 expect a real latency win."
+   ]
+  },
+  {
+   "name": "VGG-16-BN",
+   "arch": "vgg16_bn",
+   "dataset": "CIFAR-10",
+   "schedule": "prune 0.5 channels, 5 steps x 5 DKD fine-tune epochs, INT8",
+   "source": "tools/transcribed_vgg16.json",
+   "provenance": {
+    "kind": "transcribed",
+    "host": "Kaggle (Intel Xeon @ 2.00GHz)",
+    "where": "Kaggle notebook log",
+    "note": "typed in from the run's printed log; latency is Kaggle-CPU latency, not an INT8-capable device"
+   },
+   "host": {
+    "system": "Linux",
+    "machine": "x86_64",
+    "cpu": "Intel(R) Xeon(R) CPU @ 2.00GHz",
+    "logical_cores": 4,
+    "performance_cores": 4,
+    "features": [
+     "avx2",
+     "avx512f",
+     "f16c"
+    ],
+    "int8_speed": "slow",
+    "versions": {
+     "python": "3.13.15",
+     "torch": "2.11.0+cu128",
+     "onnxruntime": "1.31.0",
+     "numpy": "2.1.3"
+    }
+   },
+   "baseline": {
+    "stage": "baseline",
+    "precision": "fp32",
+    "accuracy": 0.932,
+    "median_ms": 9.042,
+    "p95_ms": 9.688,
+    "size_mb": 56.16,
+    "parameters": 14724042,
+    "notes": "",
+    "recall": null,
+    "support": null,
+    "artifact": "baseline.onnx"
+   },
+   "stages": [
+    {
+     "stage": "1_prune",
+     "precision": "fp32",
+     "accuracy": 0.9025,
+     "median_ms": 1.995,
+     "p95_ms": 2.262,
+     "size_mb": 14.05,
+     "parameters": 3684842,
+     "notes": "",
+     "recall": null,
+     "support": null,
+     "artifact": "1_prune.onnx"
+    },
+    {
+     "stage": "2_recover",
+     "precision": "fp32",
+     "accuracy": 0.9025,
+     "median_ms": 1.859,
+     "p95_ms": 2.17,
+     "size_mb": 14.05,
+     "parameters": 3684842,
+     "notes": "",
+     "recall": null,
+     "support": null,
+     "artifact": "2_recover.onnx"
+    },
+    {
+     "stage": "3_quantize",
+     "precision": "int8",
+     "accuracy": 0.9018,
+     "median_ms": 1.133,
+     "p95_ms": 1.357,
+     "size_mb": 3.57,
+     "parameters": 3684842,
+     "notes": "",
+     "recall": null,
+     "support": null,
+     "artifact": "3_quantize.onnx"
+    }
+   ],
+   "prune_stats": {
+    "params_before": 14724042,
+    "params_after": 3684842,
+    "macs_before": 314200000,
+    "macs_after": 79200000,
+    "ratio_requested": 0.5,
+    "steps": 5,
+    "channels": {}
+   },
+   "prune_history": [
+    {
+     "step": 1,
+     "params": null,
+     "acc_after_cut": 0.9134,
+     "acc_after_finetune": 0.9177
+    },
+    {
+     "step": 2,
+     "params": null,
+     "acc_after_cut": 0.9077,
+     "acc_after_finetune": 0.9178
+    },
+    {
+     "step": 3,
+     "params": null,
+     "acc_after_cut": 0.8952,
+     "acc_after_finetune": 0.9138
+    },
+    {
+     "step": 4,
+     "params": null,
+     "acc_after_cut": 0.8873,
+     "acc_after_finetune": 0.9144
+    },
+    {
+     "step": 5,
+     "params": null,
+     "acc_after_cut": 0.8666,
+     "acc_after_finetune": 0.9025
+    }
+   ],
+   "quantization": {
+    "precision": "int8",
+    "coverage": 1.0,
+    "quantized_ops": {
+     "compute": 14
+    },
+    "unquantized_ops": {}
+   },
+   "totals": {
+    "accuracy_drop_pp": 3.02,
+    "speedup": 7.98,
+    "size_reduction": 15.72,
+    "efficiency_score": 0.9037
+   },
+   "warnings": [
+    "INT8 requested but No VNNI/AMX/DotProd/I8MM on this CPU - INT8 may be SLOWER than FP32. Benchmark before shipping it."
+   ]
+  }
+ ]
+}

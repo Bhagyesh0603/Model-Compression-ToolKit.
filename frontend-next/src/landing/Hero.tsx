@@ -18,6 +18,7 @@ const LAYERS = layersOf(MODEL)!;
 const BASE = MODEL.baseline;
 const FINAL = finalStage(MODEL);
 const STATS = MODEL.prune_stats!;
+const HEADLINE = 'Shrink a CNN, then measure what it cost.';
 
 const fmtCount = (v: number) => count(Math.round(v));
 const fmtPct = (v: number) => pct(v);
@@ -37,8 +38,8 @@ export function Hero() {
   const play = useCallback(() => {
     cut.set(0);
     quant.set(0);
-    // On the first visit of a session the opening curtain is on screen for about 2.3s; start once it has opened.
-    const wait = document.documentElement.dataset.intro === 'skip' ? 0.7 : 2.4;
+    // Start once the curtain has opened and the hero text and card have arrived.
+    const wait = document.documentElement.dataset.intro === 'skip' ? 1.5 : 3.2;
     const a = animate(cut, 1, { duration: 1.9, ease: EASE, delay: wait });
     const b = animate(quant, 1, { duration: 1, ease: EASE, delay: wait + 2.2 });
     return () => {
@@ -71,20 +72,26 @@ export function Hero() {
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-(--bg) to-transparent" />
       </div>
       <div className="relative z-10 mx-auto w-full max-w-[1320px] px-5 pb-20 pt-[132px] sm:px-8 sm:pb-28 sm:pt-[156px]">
-        <p className="label-xs">Model compression toolkit</p>
+        <p className="label-xs ss-rise">Model compression toolkit</p>
         <h1
           id="hero-title"
+          aria-label={HEADLINE}
           className="mt-5 max-w-[15ch] text-balance text-[clamp(44px,6.6vw,104px)] font-normal leading-[0.98] tracking-[-0.05em]"
         >
-          Shrink a CNN, then measure what it cost.
+          {HEADLINE.split(' ').map((w, i) => (
+            <span key={i} aria-hidden="true" className="ss-rise inline-block" style={{ '--ss-d': `${0.12 + i * 0.075}s` } as React.CSSProperties}>
+              {w}
+              {i < HEADLINE.split(' ').length - 1 ? '\u00a0' : ''}
+            </span>
+          ))}
         </h1>
         <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <p className="max-w-[54ch] text-[17px] leading-[1.65] text-(--muted)">
+          <p className="ss-rise max-w-[54ch] text-[17px] leading-[1.65] text-(--muted)" style={{ '--ss-d': '0.75s' } as React.CSSProperties}>
             compresskit prunes, distils and quantizes an image classifier, then measures the exported ONNX file rather
             than the model in memory. Below is ResNet-20 on CIFAR-10, drawn from the recorded run: each column is a
             layer and each cell is a channel.
           </p>
-          <div className="flex flex-wrap items-center gap-3">
+          <div className="ss-rise flex flex-wrap items-center gap-3" style={{ '--ss-d': '0.95s' } as React.CSSProperties}>
             <Link
               href="/explore"
               className="group inline-flex h-[52px] items-center gap-4 rounded-full bg-(--inv-bg) pl-6 pr-1.5 text-[15px] font-medium text-(--inv-fg) transition-colors hover:bg-(--inv-hover)"
@@ -103,7 +110,7 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="mt-14 rounded-[28px] border border-(--line) bg-(--bg)/80 p-5 backdrop-blur-md sm:p-8">
+        <div className="ss-rise mt-14 rounded-[28px] border border-(--line) bg-(--bg)/80 p-5 backdrop-blur-md sm:p-8" style={{ '--ss-d': '1.15s' } as React.CSSProperties}>
           <div className="flex flex-wrap items-center justify-between gap-3 text-[12px] text-(--muted)">
             <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
               <Legend swatch="bg-(--line-strong)" text="removed channels" />

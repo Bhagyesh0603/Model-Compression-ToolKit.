@@ -1,0 +1,51 @@
+{
+ "model": "ResNet-20",
+ "baseline_accuracy": 0.9154,
+ "total_fine_tune_epochs": 6,
+ "prune_ratio": 0.5,
+ "provenance": {
+  "kind": "measured",
+  "host": "Apple M5",
+  "machine": "arm64",
+  "date": "2026-10-27",
+  "where": "same model, same 6 fine-tune epochs, DKD; gradual = artifacts/demo, one-shot = this run"
+ },
+ "gradual": {
+  "steps": 3,
+  "epochs_per_step": 2,
+  "history": [
+   {
+    "step": 1,
+    "params": 185290,
+    "acc_after_cut": 0.6928,
+    "acc_after_finetune": 0.8763
+   },
+   {
+    "step": 2,
+    "params": 117267,
+    "acc_after_cut": 0.6336,
+    "acc_after_finetune": 0.8626
+   },
+   {
+    "step": 3,
+    "params": 68786,
+    "acc_after_cut": 0.4982,
+    "acc_after_finetune": 0.8397
+   }
+  ],
+  "final_params": 68786
+ },
+ "one_shot": {
+  "steps": 1,
+  "epochs_per_step": 6,
+  "history": [
+   {
+    "step": 1,
+    "params": 68786,
+    "acc_after_cut": 0.1775,
+    "acc_after_finetune": 0.8503
+   }
+  ],
+  "final_params": 68786
+ }
+}

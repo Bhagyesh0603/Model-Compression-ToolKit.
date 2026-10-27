@@ -1,0 +1,53 @@
+{
+ "hosts": [
+  {
+   "system": "Darwin",
+   "machine": "arm64",
+   "cpu": "Apple M5",
+   "logical_cores": 10,
+   "performance_cores": 4,
+   "features": [
+    "bf16",
+    "dotprod",
+    "fp16",
+    "i8mm",
+    "neon"
+   ],
+   "int8_speed": "fast",
+   "versions": {
+    "python": "3.14.7",
+    "torch": "2.14.0",
+    "onnxruntime": "1.29.0",
+    "numpy": "2.5.2"
+   },
+   "provenance": {
+    "kind": "measured",
+    "host": "Apple M5",
+    "machine": "arm64",
+    "date": "2026-10-27",
+    "where": "compresskit probe"
+   },
+   "label": "this machine"
+  },
+  {
+   "label": "Kaggle notebook CPU",
+   "system": "Linux",
+   "machine": "x86_64",
+   "cpu": "Intel(R) Xeon(R) CPU @ 2.00GHz",
+   "logical_cores": 4,
+   "performance_cores": 4,
+   "features": [
+    "avx2",
+    "avx512f",
+    "f16c"
+   ],
+   "int8_speed": "slow",
+   "int8_note": "No VNNI/AMX/DotProd/I8MM on this CPU - INT8 may be SLOWER than FP32. Benchmark before shipping it.",
+   "default_precision": "fp16",
+   "provenance": {
+    "kind": "transcribed",
+    "where": "pre-flight output of the Kaggle ResNet-20 and VGG-16 runs"
+   }
+  }
+ ]
+}

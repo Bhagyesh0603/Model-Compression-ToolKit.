@@ -1,0 +1,176 @@
+{
+ "model": "ResNet-20",
+ "bits": 8,
+ "batches": 4,
+ "provenance": {
+  "kind": "measured",
+  "host": "Apple M5",
+  "machine": "arm64",
+  "date": "2026-10-27",
+  "where": "compresskit.sensitivity.analyze on 4 train-split calibration batches"
+ },
+ "layers": [
+  {
+   "name": "layer1.2.conv1",
+   "kind": "Conv",
+   "parameters": 2304,
+   "mse": 0.0006044883048161864,
+   "sqnr_db": 45.64417839050293
+  },
+  {
+   "name": "layer3.1.conv1",
+   "kind": "Conv",
+   "parameters": 36864,
+   "mse": 0.00025143439415842295,
+   "sqnr_db": 49.45380687713623
+  },
+  {
+   "name": "conv1",
+   "kind": "Conv",
+   "parameters": 432,
+   "mse": 0.0002379330398980528,
+   "sqnr_db": 49.69350814819336
+  },
+  {
+   "name": "layer3.0.conv2",
+   "kind": "Conv",
+   "parameters": 36864,
+   "mse": 0.00022341583098750561,
+   "sqnr_db": 49.96691703796387
+  },
+  {
+   "name": "layer2.0.conv1",
+   "kind": "Conv",
+   "parameters": 4608,
+   "mse": 0.0002217827131971717,
+   "sqnr_db": 49.998779296875
+  },
+  {
+   "name": "layer2.0.downsample.0",
+   "kind": "Conv",
+   "parameters": 512,
+   "mse": 0.00020492267503868788,
+   "sqnr_db": 50.34215450286865
+  },
+  {
+   "name": "layer1.0.conv1",
+   "kind": "Conv",
+   "parameters": 2304,
+   "mse": 0.00018403679132461548,
+   "sqnr_db": 50.809006690979004
+  },
+  {
+   "name": "layer1.0.conv2",
+   "kind": "Conv",
+   "parameters": 2304,
+   "mse": 0.00017524677969049662,
+   "sqnr_db": 51.02155685424805
+  },
+  {
+   "name": "layer3.0.conv1",
+   "kind": "Conv",
+   "parameters": 18432,
+   "mse": 0.00016689552285242826,
+   "sqnr_db": 51.23360633850098
+  },
+  {
+   "name": "layer3.2.conv1",
+   "kind": "Conv",
+   "parameters": 36864,
+   "mse": 0.00015230206190608442,
+   "sqnr_db": 51.63099765777588
+  },
+  {
+   "name": "layer2.1.conv1",
+   "kind": "Conv",
+   "parameters": 9216,
+   "mse": 0.00011068881576647982,
+   "sqnr_db": 53.0170202255249
+  },
+  {
+   "name": "layer2.2.conv1",
+   "kind": "Conv",
+   "parameters": 9216,
+   "mse": 0.00011030037421733141,
+   "sqnr_db": 53.032283782958984
+  },
+  {
+   "name": "fc",
+   "kind": "Linear",
+   "parameters": 650,
+   "mse": 0.00010857387678697705,
+   "sqnr_db": 53.10080051422119
+  },
+  {
+   "name": "layer3.1.conv2",
+   "kind": "Conv",
+   "parameters": 36864,
+   "mse": 0.00010566378477960825,
+   "sqnr_db": 53.218793869018555
+  },
+  {
+   "name": "layer2.0.conv2",
+   "kind": "Conv",
+   "parameters": 9216,
+   "mse": 9.680647781351581e-05,
+   "sqnr_db": 53.59900951385498
+  },
+  {
+   "name": "layer1.1.conv1",
+   "kind": "Conv",
+   "parameters": 2304,
+   "mse": 7.425461080856621e-05,
+   "sqnr_db": 54.75081920623779
+  },
+  {
+   "name": "layer1.2.conv2",
+   "kind": "Conv",
+   "parameters": 2304,
+   "mse": 4.8049987526610494e-05,
+   "sqnr_db": 56.64112091064453
+  },
+  {
+   "name": "layer1.1.conv2",
+   "kind": "Conv",
+   "parameters": 2304,
+   "mse": 4.4086882553528994e-05,
+   "sqnr_db": 57.01496124267578
+  },
+  {
+   "name": "layer2.1.conv2",
+   "kind": "Conv",
+   "parameters": 9216,
+   "mse": 3.2321997423423454e-05,
+   "sqnr_db": 58.363075256347656
+  },
+  {
+   "name": "layer3.0.downsample.0",
+   "kind": "Conv",
+   "parameters": 2048,
+   "mse": 3.2005231332732365e-05,
+   "sqnr_db": 58.40584754943848
+  },
+  {
+   "name": "layer2.2.conv2",
+   "kind": "Conv",
+   "parameters": 9216,
+   "mse": 2.2714248189004138e-05,
+   "sqnr_db": 59.8950719833374
+  },
+  {
+   "name": "layer3.2.conv2",
+   "kind": "Conv",
+   "parameters": 36864,
+   "mse": 1.292662818741519e-05,
+   "sqnr_db": 62.343201637268066
+  }
+ ],
+ "protected_at_0.5": [
+  "layer1.2.conv1",
+  "layer3.1.conv1"
+ ],
+ "kept_fp32_top2": [
+  "layer1.2.conv1",
+  "layer3.1.conv1"
+ ]
+}
