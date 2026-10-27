@@ -78,3 +78,13 @@ def test_train_pipeline_report_end_to_end(image_folder, tmp_path):
     data = json.loads(raw.read_text())
     assert [row["step"] for row in data["prune_history"]] == [1, 2]
     assert list((tmp_path / "work").glob("*quantize.onnx"))
+
+
+def test_cifar_root_prefers_explicit_then_env(tmp_path, monkeypatch):
+    from compresskit.zoo import data
+
+    monkeypatch.setenv(data.CIFAR_ROOT_ENV, str(tmp_path / "from_env"))
+    assert data.resolve_root() == tmp_path / "from_env"
+    assert data.resolve_root(tmp_path / "explicit") == tmp_path / "explicit"
+    monkeypatch.delenv(data.CIFAR_ROOT_ENV)
+    assert data.resolve_root() in (data.DEFAULT_ROOT, *data._KAGGLE_INPUT.glob("*"))
