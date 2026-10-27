@@ -1,0 +1,22 @@
+{
+  "_note": "Transcribed by hand from the pre-flight and per-step log of the Kaggle VGG-16 run (pasted into the session). Replace by passing that run's results.json to tools/export_site_data.py --vgg-json.",
+  "host": {"system": "Linux", "machine": "x86_64", "cpu": "Intel(R) Xeon(R) CPU @ 2.00GHz", "logical_cores": 4, "performance_cores": 4,
+           "features": ["avx2", "avx512f", "f16c"], "int8_speed": "slow", "versions": {"python": "3.13.15", "torch": "2.11.0+cu128", "onnxruntime": "1.31.0", "numpy": "2.1.3"}},
+  "baseline": {"stage": "baseline", "precision": "fp32", "accuracy": 0.9320, "latency": {"median_ms": 9.042, "p95_ms": 9.688}, "size_mb": 56.16, "parameters": 14724042, "artifact": "baseline.onnx"},
+  "stages": [
+    {"stage": "1_prune", "precision": "fp32", "accuracy": 0.9025, "latency": {"median_ms": 1.995, "p95_ms": 2.262}, "size_mb": 14.05, "parameters": 3684842, "artifact": "1_prune.onnx"},
+    {"stage": "2_recover", "precision": "fp32", "accuracy": 0.9025, "latency": {"median_ms": 1.859, "p95_ms": 2.170}, "size_mb": 14.05, "parameters": 3684842, "artifact": "2_recover.onnx"},
+    {"stage": "3_quantize", "precision": "int8", "accuracy": 0.9018, "latency": {"median_ms": 1.133, "p95_ms": 1.357}, "size_mb": 3.57, "parameters": 3684842, "artifact": "3_quantize.onnx"}
+  ],
+  "prune_stats": {"params_before": 14724042, "params_after": 3684842, "macs_before": 314200000, "macs_after": 79200000, "ratio_requested": 0.5, "steps": 5, "channels": {}},
+  "prune_history": [
+    {"step": 1, "params": null, "acc_after_cut": 0.9134, "acc_after_finetune": 0.9177},
+    {"step": 2, "params": null, "acc_after_cut": 0.9077, "acc_after_finetune": 0.9178},
+    {"step": 3, "params": null, "acc_after_cut": 0.8952, "acc_after_finetune": 0.9138},
+    {"step": 4, "params": null, "acc_after_cut": 0.8873, "acc_after_finetune": 0.9144},
+    {"step": 5, "params": null, "acc_after_cut": 0.8666, "acc_after_finetune": 0.9025}
+  ],
+  "quantization": {"precision": "int8", "coverage": 1.0, "quantized_ops": {"compute": 14}, "unquantized_ops": {}},
+  "totals": {"accuracy_drop_pp": 3.02, "speedup": 7.98, "size_reduction": 15.72, "efficiency_score": 0.9037},
+  "warnings": ["INT8 requested but No VNNI/AMX/DotProd/I8MM on this CPU - INT8 may be SLOWER than FP32. Benchmark before shipping it."]
+}

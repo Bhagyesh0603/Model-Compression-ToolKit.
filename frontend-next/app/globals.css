@@ -1,0 +1,113 @@
+@import "tailwindcss";
+
+/* ==========================================================================
+   compresskit design tokens
+   Manrope + a neutral ink ramp + one evergreen brand ramp. The landing tone
+   engine (src/landing/tone) cross-fades the page between light and dark; it is
+   driven by the --bg/--fg tokens in tone.css, not by anything here.
+   ========================================================================== */
+
+@theme {
+  /* Neutral ink ramp is the root default (the warm tint is gone); portals re-scope it below.
+     Default token declarations: generates Tailwind v4 utilities (bg-ink-*, text-accent-*, rounded-*, etc.) */
+  --color-ink-950: #141414;
+  --color-ink-900: #1f1f1f;
+  --color-ink-800: #2a2a2a;
+  --color-ink-700: #404040;
+  --color-ink-600: #5c5c5c;
+  --color-ink-500: #6b6b6b;
+  --color-ink-400: #a3a3a3;
+  --color-ink-300: #d4d4d4;
+  --color-ink-200: #e6e6e6;
+  --color-ink-100: #efefef;
+  --color-ink-50: #f7f7f7;
+  --color-paper: #ffffff;
+
+
+  /* Evergreen brand ramp (landing + portals). brand-600 and darker carry white text. */
+  --color-brand-50: #eefaf4;
+  --color-brand-100: #dcf3e8;
+  --color-brand-200: #bfe9d6;
+  --color-brand-300: #7fd1ae;
+  --color-brand-400: #4fb98d;
+  --color-brand-500: #2a9670;
+  --color-brand-600: #1d7a5c;
+  --color-brand-700: #17624b;
+  --color-brand-800: #124d3c;
+  --color-brand-900: #0d3b2e;
+
+  /* Data accent: the INT8 state in charts and the strip. Used only where a figure marks quantized values. */
+  --color-int8: #3a8fb7;
+
+  /* Semantic danger: errors, validation, destructive actions only */
+  --color-danger-50: #fef3f2;
+  --color-danger-100: #fee4e2;
+  --color-danger-600: #b42318;
+  --color-danger-700: #912018;
+
+  --font-sans: var(--font-manrope), "Manrope", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+  --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+
+  --radius-xs: 4px;
+  --radius-sm: 8px;
+  --radius-md: 12px;
+  --radius-lg: 16px;
+  --radius-xl: 24px;
+
+  --shadow-card: 0 1px 2px rgb(20 20 20 / 0.04), 0 8px 24px -12px rgb(20 20 20 / 0.08);
+  --shadow-lift: 0 2px 4px rgb(20 20 20 / 0.05), 0 16px 40px -16px rgb(20 20 20 / 0.14);
+  --shadow-overlay: 0 8px 32px -8px rgb(0 0 0 / 0.16), 0 2px 8px -2px rgb(0 0 0 / 0.08);
+}
+
+@layer base {
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-font-smoothing: antialiased;
+    -moz-osx-font-smoothing: grayscale;
+  }
+
+  body {
+    background-color: var(--color-ink-50);
+    color: var(--color-ink-900);
+    font-family: var(--font-sans);
+    margin: 0;
+  }
+
+  :focus-visible {
+    outline: 2px solid var(--color-brand-600);
+    outline-offset: 2px;
+  }
+
+  ::selection {
+    background-color: var(--color-brand-200);
+    color: var(--color-brand-900);
+  }
+}
+
+@layer utilities {
+  /* Eyebrow uppercase micro-labels */
+  .label-xs {
+    font-size: 11px;
+    line-height: 1rem;
+    font-weight: 500;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: var(--color-ink-500);
+  }
+
+  /* Numbers that must line up in tables and stat rows */
+  .figures-tab {
+    font-variant-numeric: tabular-nums;
+  }
+}
+
+/* Accessibility: respect user prefers-reduced-motion settings */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

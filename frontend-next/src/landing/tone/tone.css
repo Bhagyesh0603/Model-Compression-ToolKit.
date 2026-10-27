@@ -1,0 +1,49 @@
+/* Landing tone tokens. Every colour is a mix of its light and dark value keyed
+   on --tone-dark (0 = light, 1 = dark), which LandingController eases with the
+   Lenis lerp. Components use them as Tailwind v4 variables: bg-(--bg),
+   text-(--muted), border-(--line), bg-(--inv-bg)/80 … */
+
+/* The root, and any band that owns its tone ([data-tone-own]) — a physical dark or light
+   panel that does not follow the page mix — resolve the same variables from their own
+   --tone-dark (custom properties resolve where they are declared, so a fixed band must
+   re-declare them rather than inherit the page's). */
+.landing,
+.landing [data-tone-own] {
+  --tone-p: calc(var(--tone-dark) * 100%);
+
+  --bg: color-mix(in oklab, #ffffff, #141414 var(--tone-p));
+  --fg: color-mix(in oklab, #141414, #ffffff var(--tone-p));
+  --muted: color-mix(in oklab, #6b6b6b, #a3a3a3 var(--tone-p));
+  /* Large display text only (>= 3:1). */
+  --faint: color-mix(in oklab, #8f8f8f, #737373 var(--tone-p));
+  --line: color-mix(in oklab, #e6e6e6, #2e2e2e var(--tone-p));
+  --line-strong: color-mix(in oklab, #cfcfcf, #4a4a4a var(--tone-p));
+  --hover: color-mix(in oklab, #f2f2f2, #222222 var(--tone-p));
+  --surface: color-mix(in oklab, #efefef, #1f1f1f var(--tone-p));
+  --surface-muted: color-mix(in oklab, #5c5c5c, #b5b5b5 var(--tone-p));
+  --chip: color-mix(in oklab, #efefef, #2a2a2a var(--tone-p));
+  --chip-hover: color-mix(in oklab, #e4e4e4, #363636 var(--tone-p));
+  --chip-fg: color-mix(in oklab, #6b6b6b, #b5b5b5 var(--tone-p));
+  /* Inverse pills and cards: dark on a light band, light on a dark band. */
+  --inv-bg: color-mix(in oklab, #141414, #ffffff var(--tone-p));
+  --inv-fg: color-mix(in oklab, #ffffff, #141414 var(--tone-p));
+  --inv-hover: color-mix(in oklab, #2a2a2a, #e6e6e6 var(--tone-p));
+  --inv-muted: color-mix(in oklab, #b5b5b5, #5c5c5c var(--tone-p));
+  /* Evergreen accent: brand-600 on light, brand-300 on dark. */
+  --snake: color-mix(in oklab, var(--color-brand-600), var(--color-brand-300) var(--tone-p));
+
+  background-color: var(--bg);
+  color: var(--fg);
+}
+
+.landing {
+  --tone-dark: 0;
+}
+
+.landing [data-tone-own='dark'] {
+  --tone-dark: 1;
+}
+
+.landing [data-tone-own='light'] {
+  --tone-dark: 0;
+}
