@@ -30,7 +30,7 @@ import torch
 import torch.nn as nn
 
 from .core import host as host_mod
-from .core.benchmark import Measurement, efficiency_score, measure
+from .core.benchmark import Measurement, accuracy_onnx, efficiency_score, measure
 from .pipeline import Pipeline, PipelineResult
 from .pruning import LatencyGuidedReport, PruneConfig, StructuredPruner, measure_latency_impact
 from .sensitivity import SensitivityReport, analyze
@@ -237,6 +237,9 @@ class SearchResult:
     chosen: Attempt | None
     sensitivity: SensitivityReport | None = None
     host: dict = field(default_factory=lambda: host_mod.probe().as_dict())
+    # Only set when the search selected on a validation split: the chosen
+    # configuration's accuracy on the untouched test set.
+    test_accuracy: dict | None = None
 
     @property
     def met(self) -> bool:
@@ -328,6 +331,7 @@ def compress(
     search_accuracy_limit: int | None = 2000,
     confirm_margin: float = 0.1,
     verbose: bool = True,
+    select_loader=None,
 ) -> SearchResult:
     """Find the least compression that meets `budget`. Escalates only as needed.
 
@@ -345,6 +349,12 @@ def compress(
     search run on a host without fast INT8 (a cloud CPU) can still produce the
     INT8 artifact for a different deployment target. Latency verdicts then
     describe the host that ran the search, not the target.
+
+    `select_loader`, if given, is what every search-time accuracy check and the
+    budget verdicts use (a validation split the test set never touches); the
+    chosen configuration is then scored once on `test_loader` and that number is
+    returned in `SearchResult.test_accuracy`. Without it, the search selects on
+    the test set, which flatters the winner.
 
     `keep_float` is how many of the most sensitive layers the mixed-precision
     step keeps in float32 when accuracy is the only thing quantization misses;
@@ -385,15 +395,17 @@ def compress(
         median = candidate.result.final.latency.median_ms
         if median <= limit and median > (1.0 - confirm_margin) * limit:
             log(f"    borderline ({median:.3f} ms vs {limit:.3f} ms) — re-measuring at full fidelity")
-            _remeasure_full(candidate, budget, test_loader, input_shape)
+            _remeasure_full(candidate, budget, eval_loader, input_shape)
             log(f"    {candidate.result.final.summary()}")
         return candidate
+
+    eval_loader = select_loader if select_loader is not None else test_loader
 
     def pipeline(name: str, full: bool = False) -> Pipeline:
         return Pipeline(
             model,
             calibration_loader,
-            test_loader,
+            eval_loader,
             train_loader=train_loader,
             input_shape=input_shape,
             workdir=workdir / name,
@@ -407,11 +419,18 @@ def compress(
 
     def finalize(chosen: Attempt | None, report: SensitivityReport | None) -> SearchResult:
         if chosen is not None:
-            _remeasure_full(chosen, budget, test_loader, input_shape)
+            _remeasure_full(chosen, budget, eval_loader, input_shape)
             if verbose:
                 print("\nfinal (full-fidelity re-measure):", flush=True)
                 print(f"    {chosen.result.final.summary()}", flush=True)
-        return SearchResult(budget=budget, attempts=attempts, chosen=chosen, sensitivity=report)
+        held_out = None
+        if chosen is not None and select_loader is not None:
+            held_out = {
+                "baseline": accuracy_onnx(chosen.result.baseline.artifact, test_loader),
+                "final": accuracy_onnx(chosen.result.final.artifact, test_loader),
+            }
+        return SearchResult(budget=budget, attempts=attempts, chosen=chosen, sensitivity=report,
+                            test_accuracy=held_out)
 
     log(pipeline("preflight").quantize().preflight())
     log("")

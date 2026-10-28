@@ -1,7 +1,7 @@
 'use client';
 
 import Link from 'next/link';
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import { ArrowUpRight, RotateCcw } from 'lucide-react';
 import { animate, useMotionValue, useTransform } from 'motion/react';
 import { count, finalStage, mb, models, ms, pct } from '@/src/data/results';
@@ -35,18 +35,28 @@ export function Hero() {
   const cut = useMotionValue(reduce ? 1 : 0);
   const quant = useMotionValue(reduce ? 1 : 0);
 
-  const play = useCallback(() => {
-    cut.set(0);
-    quant.set(0);
-    // Start once the curtain has opened and the hero text and card have arrived.
-    const wait = document.documentElement.dataset.intro === 'skip' ? 1.5 : 3.2;
-    const a = animate(cut, 1, { duration: 1.9, ease: EASE, delay: wait });
-    const b = animate(quant, 1, { duration: 1, ease: EASE, delay: wait + 2.2 });
-    return () => {
-      a.stop();
-      b.stop();
-    };
-  }, [cut, quant]);
+  // The backdrop's floating boxes stay still until the entrance has finished, so only one thing animates at a time.
+  const [calm, setCalm] = useState(true);
+  useEffect(() => {
+    const t = window.setTimeout(() => setCalm(false), document.documentElement.dataset.intro === 'skip' ? 2800 : 4600);
+    return () => window.clearTimeout(t);
+  }, []);
+
+  const play = useCallback(
+    (replay = false) => {
+      cut.set(0);
+      quant.set(0);
+      // First play waits for the curtain, the text and the card (about 3.7s on a first visit); a replay starts at once.
+      const wait = replay ? 0.1 : document.documentElement.dataset.intro === 'skip' ? 1.9 : 4.1;
+      const a = animate(cut, 1, { duration: 1.9, ease: EASE, delay: wait });
+      const b = animate(quant, 1, { duration: 1, ease: EASE, delay: wait + 2.2 });
+      return () => {
+        a.stop();
+        b.stop();
+      };
+    },
+    [cut, quant],
+  );
 
   useEffect(() => {
     if (reduce) {
@@ -66,7 +76,7 @@ export function Hero() {
   return (
     <Band id="hero" tone="light" labelledBy="hero-title" className="overflow-hidden">
       {/* The isometric block field is the landing page's backdrop only. A veil keeps text readable and fades it into the next band. */}
-      <div aria-hidden="true" className="pointer-events-none absolute inset-0">
+      <div aria-hidden="true" className={`pointer-events-none absolute inset-0 ${calm ? 'ss-iso-calm' : ''}`}>
         <IsoScene className="h-full w-full" />
         <div className="absolute inset-0 bg-gradient-to-r from-(--bg)/90 via-(--bg)/55 to-(--bg)/10" />
         <div className="absolute inset-x-0 bottom-0 h-1/3 bg-gradient-to-t from-(--bg) to-transparent" />
@@ -86,12 +96,12 @@ export function Hero() {
           ))}
         </h1>
         <div className="mt-8 flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-          <p className="ss-rise max-w-[54ch] text-[17px] leading-[1.65] text-(--muted)" style={{ '--ss-d': '0.75s' } as React.CSSProperties}>
+          <p className="ss-fade max-w-[54ch] text-[17px] leading-[1.65] text-(--muted)" style={{ '--ss-d': '0.75s' } as React.CSSProperties}>
             compresskit prunes, distils and quantizes an image classifier, then measures the exported ONNX file rather
             than the model in memory. Below is ResNet-20 on CIFAR-10, drawn from the recorded run: each column is a
             layer and each cell is a channel.
           </p>
-          <div className="ss-rise flex flex-wrap items-center gap-3" style={{ '--ss-d': '0.95s' } as React.CSSProperties}>
+          <div className="ss-fade flex flex-wrap items-center gap-3" style={{ '--ss-d': '0.95s' } as React.CSSProperties}>
             <Link
               href="/explore"
               className="group inline-flex h-[52px] items-center gap-4 rounded-full bg-(--inv-bg) pl-6 pr-1.5 text-[15px] font-medium text-(--inv-fg) transition-colors hover:bg-(--inv-hover)"
@@ -110,7 +120,7 @@ export function Hero() {
           </div>
         </div>
 
-        <div className="ss-rise mt-14 rounded-[28px] border border-(--line) bg-(--bg)/80 p-5 backdrop-blur-md sm:p-8" style={{ '--ss-d': '1.15s' } as React.CSSProperties}>
+        <div className="ss-fade mt-14 rounded-[28px] border border-(--line) bg-(--bg)/90 p-5 sm:p-8" style={{ '--ss-d': '1.15s' } as React.CSSProperties}>
           <div className="flex flex-wrap items-center justify-between gap-3 text-[12px] text-(--muted)">
             <ul className="flex flex-wrap items-center gap-x-5 gap-y-2">
               <Legend swatch="bg-(--line-strong)" text="removed channels" />
@@ -119,7 +129,7 @@ export function Hero() {
             </ul>
             <button
               type="button"
-              onClick={() => play()}
+              onClick={() => play(true)}
               className="inline-flex h-8 items-center gap-1.5 rounded-full bg-(--chip) px-3 text-(--chip-fg) transition-colors hover:bg-(--chip-hover)"
             >
               <RotateCcw className="h-3.5 w-3.5" aria-hidden="true" />

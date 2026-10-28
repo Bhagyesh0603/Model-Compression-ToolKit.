@@ -227,7 +227,7 @@ Convolutional neural networks reach good accuracy only with parameter counts and
 
 This project builds \textbf{CompressKit}, a Python toolkit that composes the three techniques in a fixed, justified order (prune, recover, distill, quantize last) and measures every reported quantity on the exported ONNX file through ONNX Runtime. Four mechanisms distinguish it: an instruction-set probe that permits INT8 only on hosts with fused low-precision kernels; a per-layer SIMD alignment rule that keeps narrow layers from being silently left unpruned; a shared pruning ratio across the layers that residual connections tie together; and a label-free per-layer sensitivity analysis that supplies both the quantization exclusions and non-uniform pruning ratios. A declarative budget search escalates from quantization alone to pruning and distillation only when a stated latency, accuracy or size budget is still unmet. The toolkit produces a compressed \code{.onnx} file, a detailed HTML report and a machine-readable \code{results.json}.
 
-The toolkit is about 5,000 lines of Python with 162 automated tests. On CIFAR-10 it compressed ResNet-20 from 1.05 MB to 0.11 MB (9.1 times smaller) and from 1.45 ms to 0.46 ms on an Apple M5, at a cost of 7.54 percentage points of accuracy (91.54\% to 84.00\%). A VGG-16-BN run on a Kaggle CPU reduced the model 15.7 times at a 3.02-point accuracy cost. The report also records results that did not favour the method: at an equal fine-tuning budget one-shot pruning matched or beat gradual pruning on ResNet-20, and batch-norm re-estimation alone recovered little accuracy. Verification of the compressed ONNX file against the original on real test images is included, together with the limits of what was tested.
+The toolkit is about 5,000 lines of Python with 172 automated tests. On CIFAR-10 it compressed ResNet-20 from 1.05 MB to 0.11 MB (9.1 times smaller) and from 1.45 ms to 0.46 ms on an Apple M5, at a cost of 7.54 percentage points of accuracy (91.54\% to 84.00\%). A VGG-16-BN run on a Kaggle CPU reduced the model 15.7 times at a 3.02-point accuracy cost. The report also records results that did not favour the method: at an equal fine-tuning budget one-shot pruning matched or beat gradual pruning on ResNet-20, and batch-norm re-estimation alone recovered little accuracy. Verification of the compressed ONNX file against the original on real test images is included, together with the limits of what was tested.
 
 \vspace{0.4cm}
 \textbf{Keywords:} model compression, structured pruning, knowledge distillation, post-training quantization, ONNX Runtime, SIMD alignment, layer sensitivity, edge inference.
@@ -372,19 +372,19 @@ Fig.~\ref{fig:timeline} lays the work out against dates that can be checked in t
 \chapter{Project Requirement Specification}
 \section{Hardware and Software Requirements}
 \subsection{Hardware}
-Two machines were used, with different roles. The Apple laptop is the deployment-like target on which latency is judged; the Kaggle machine supplies a GPU for training and fine-tuning.
+Two machines were used, with different roles. The Apple laptop is the deployment-like target on which latency is judged. It also trained the ResNet-20 and ResNet-56 baselines (on its GPU, through Metal) and ran the ResNet-20 compression. The Kaggle notebook ran the full ResNet-56 schedule and VGG-16-BN; the full ResNet-56 run used no GPU, so its fine-tuning ran on the Kaggle CPU.
 
 \begin{table}[!htbp]
 \centering
 \small
 \begin{tabularx}{\textwidth}{@{}c l X X@{}}
 \toprule
-Sr. & Parameter & Local machine (final timing) & Kaggle notebook (training)\\
+Sr. & Parameter & Local machine (final timing) & Kaggle notebook\\
 \midrule
-1 & Processor & Apple M5, 10 logical cores (4 performance) & Intel Xeon @ 2.00 GHz, 4 logical cores\\
-2 & INT8 support & Fast: i8mm, dotprod, fp16, bf16, neon & Slow: avx2, avx512f, f16c only\\
-3 & Accelerator & None used & NVIDIA T4 GPU\\
-4 & Role & Latency and ONNX verification & Training, fine-tuning, compression\\
+1 & Processor & Apple M5, 10 logical cores (4 performance) & Intel Xeon, 4 logical cores: 2.20 GHz (ResNet-56) and 2.00 GHz (VGG-16-BN)\\
+2 & INT8 support & Fast: i8mm, dotprod, fp16, bf16, neon & Slow (no VNNI): avx2, f16c on the ResNet-56 host; avx2, avx512f, f16c on the VGG-16-BN host\\
+3 & Accelerator & Used for training (GPU through Metal); none for timing & ResNet-56: none, CPU only; VGG-16-BN: not recorded\\
+4 & Role & Baseline training, ResNet-20 compression, latency and ONNX verification & Full ResNet-56 and VGG-16-BN compression\\
 \bottomrule
 \end{tabularx}
 \caption{Hardware used. The probe results are those recorded by the toolkit's host module.}
@@ -404,7 +404,7 @@ PyTorch & 2.14.0 & Model definition, training, fine-tuning\\
 Torch-Pruning & DepGraph pruner & Dependency-aware channel removal\\
 ONNX Runtime & 1.29.0 & Quantization and all measurements\\
 NumPy & 2.5.2 & Array operations, CPU feature flags\\
-pytest & configured in \code{pyproject.toml} & 162 tests by default\\
+pytest & configured in \code{pyproject.toml} & 172 tests by default\\
 Git and GitHub & -- & Version control and distribution\\
 Kaggle Notebook & T4 GPU, internet on & Single end-to-end run environment\\
 \bottomrule
@@ -449,7 +449,7 @@ Fig.~\ref{fig:system} shows the whole system from what the user supplies to what
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_system.pdf}
+\includegraphics[width=0.9\textwidth]{fig_system.pdf}
 \caption{Overall system architecture of CompressKit: inputs, the toolkit with its stages, search, measurement and reporting, and the three outputs.}
 \label{fig:system}
 \end{figure}
@@ -490,7 +490,7 @@ Fig.~\ref{fig:pipedetail} gives the data path and Table~\ref{tab:stages} summari
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_pipeline_detail.pdf}
+\includegraphics[width=0.9\textwidth]{fig_pipeline_detail.pdf}
 \caption{The pipeline in detail: the six stages, the pruning loop and the quantization steps expanded, and the measurement performed after every stage.}
 \label{fig:pipedetail}
 \end{figure}
@@ -571,7 +571,7 @@ For example, a 64-channel layer at requested ratio 0.7 keeps 16 channels with al
 
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_align.pdf}
+\includegraphics[width=0.8\textwidth]{fig_align.pdf}
 \caption{Channels kept against requested ratio for a layer of width 16 (left) and 64 (right) under alignments 8, 16 and 32, computed by the toolkit's \code{\_aligned\_ratio}. A narrow layer cannot satisfy a large alignment, so all curves coincide on the left.}
 \label{fig:align}
 \end{figure}
@@ -611,7 +611,7 @@ A budget is a string such as \code{latency<0.45ms,accuracy\_drop<8\%}. \code{Bud
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_ladder.pdf}
+\includegraphics[width=0.88\textwidth]{fig_ladder.pdf}
 \caption{Escalation ladder of the budget search. Colours distinguish the rungs; the cheapest is on the left.}
 \label{fig:ladder}
 \end{figure}
@@ -628,7 +628,7 @@ A budget is a string such as \code{latency<0.45ms,accuracy\_drop<8\%}. \code{Bud
 \subsection{DFD Level 1}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_dfd1.pdf}
+\includegraphics[width=0.86\textwidth]{fig_dfd1.pdf}
 \caption{Data flow diagram, level 1: the six processes of one compression run.}
 \label{fig:dfd1}
 \end{figure}
@@ -637,7 +637,7 @@ A budget is a string such as \code{latency<0.45ms,accuracy\_drop<8\%}. \code{Bud
 Level 2 expands process 3 (prune and recover).
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_dfd2.pdf}
+\includegraphics[width=0.86\textwidth]{fig_dfd2.pdf}
 \caption{Data flow diagram, level 2: the pruning process.}
 \label{fig:dfd2}
 \end{figure}
@@ -654,7 +654,7 @@ Level 2 expands process 3 (prune and recover).
 \subsection{Sequence Diagram}
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_sequence.pdf}
+\includegraphics[width=0.88\textwidth]{fig_sequence.pdf}
 \caption{Sequence of a budget-driven \code{compress} run.}
 \label{fig:sequence}
 \end{figure}
@@ -663,7 +663,7 @@ Level 2 expands process 3 (prune and recover).
 The classes below are the main data carriers; each is a Python dataclass or a small class in the named module, and the field names are those in the source.
 \begin{figure}[H]
 \centering
-\includegraphics[width=\textwidth]{fig_classes.pdf}
+\includegraphics[width=0.88\textwidth]{fig_classes.pdf}
 \caption{Class diagram of the principal types.}
 \label{fig:classes}
 \end{figure}
@@ -740,14 +740,26 @@ Three CIFAR-10 networks were compressed with a requested channel ratio of 0.5, D
 \toprule
 Model & Schedule & Run on & Status\\
 \midrule
-ResNet-20 & 3 steps $\times$ 2 DKD epochs & Apple M5 (INT8 fast) & Measured\\
-ResNet-56 & 2 steps $\times$ 1 DKD epoch & Apple M5 & Short smoke run, not the full schedule\\
-VGG-16-BN & 5 steps $\times$ 5 DKD epochs & Kaggle Xeon CPU (T4 for training) & Figures transcribed from the printed Kaggle log; latency is Kaggle-CPU latency\\
+ResNet-20 & 3 $\times$ 2 DKD epochs & Apple M5 (INT8 fast) & Measured\\
+ResNet-56 (smoke) & 2 $\times$ 1 DKD epoch & Apple M5 & Short smoke run\\
+ResNet-56 (full) & 5 $\times$ 5 DKD epochs & Kaggle Xeon CPU & Transcribed from the notebook log; Kaggle-CPU latency\\
+VGG-16-BN & 5 $\times$ 5 DKD epochs & Kaggle Xeon CPU & Transcribed from the Kaggle log; Kaggle-CPU latency\\
 \bottomrule
 \end{tabularx}
 \caption{Experimental runs and their status.}
 \label{tab:setup}
 \end{table}
+
+\section{Protocol}
+\textbf{Baselines.} The ResNet-20 and ResNet-56 baselines were trained from scratch for 60 epochs on the full 50,000 training images, with SGD (Nesterov momentum 0.9, weight decay $5\times10^{-4}$), a peak learning rate of 0.1, one warm-up epoch followed by a cosine decay, and random-crop (padding 4) and horizontal-flip augmentation. The seed was not recorded, and the VGG-16-BN baseline recipe is not recorded in the repository.
+
+\textbf{Fine-tuning.} Each pruning step is followed by DKD fine-tuning with SGD (momentum), a learning rate of 0.005 with warm-up and cosine decay, temperature 4, $\alpha=1$ and $\beta=8$. ``2 DKD epochs per step'' means two full passes over the 50,000 training images after each cut, so the three-step ResNet-20 run uses six passes in total. The unpruned FP32 baseline is the teacher.
+
+\textbf{Channel selection.} Channels are ranked by the group L1 norm of their weights across each dependency group (Torch-Pruning's group magnitude importance), the only criterion used in any reported run. The headline runs use one uniform ratio for every layer and no per-layer overrides; per-layer overrides from the sensitivity ranking appear only in the budget search (Section~\ref{sec:search}).
+
+\textbf{Quantization and timing.} INT8 uses ONNX Runtime static quantization in QDQ format: per-channel symmetric INT8 weights, asymmetric activations (signed on Arm, unsigned on x86), MinMax calibration on 512 training images, and 7-bit range reduction only on x86 hosts without VNNI. Every latency is the median of 200 timed runs after 50 warm-up runs, at batch size 1 on one thread, with the CPU execution provider and full graph optimization. FP16 export exists but was not run in any experiment reported here.
+
+\textbf{Splits.} Accuracy in every table is measured on the 10,000 CIFAR-10 test images. Sensitivity and batch-norm re-estimation use training images only. The budget search of Section~\ref{sec:search} originally ranked candidates on the test set; it was re-run with a held-out validation split to remove that bias.
 
 \section{Compression Results}
 \begin{table}[!htbp]
@@ -774,7 +786,7 @@ Model & Stage & Acc. (\%) & Size (MB) & Latency (ms) & Parameters\\
  & INT8 & 90.18 & 3.57 & 1.133 & 3,684,842\\
 \bottomrule
 \end{tabular}
-\caption{Per-stage measurements. ResNet-20 and ResNet-56 on Apple M5; ResNet-56 is the short smoke schedule; VGG-16-BN on a Kaggle CPU, transcribed from the run log.}
+\caption[Per-stage measurements for the three models.]{Per-stage measurements. ResNet-20 and ResNet-56 on Apple M5; ResNet-56 is the short smoke schedule; VGG-16-BN on a Kaggle CPU, transcribed from the run log.}
 \label{tab:results}
 \end{table}
 
@@ -791,13 +803,31 @@ ResNet-56 (smoke) & 9.79$\times$ & 4.11$\times$ & 11.27 & 126.8 to 32.1\\
 VGG-16-BN (Kaggle CPU) & 15.72$\times$ & 7.98$\times$ & 3.02 & 314.2 to 79.2\\
 \bottomrule
 \end{tabular}
-\caption{Compression ratios, each beside the accuracy it cost. The VGG-16-BN speed-up is on a CPU without fast INT8 and is not a deployment figure.}
+\caption[Compression ratios beside their accuracy cost.]{Compression ratios, each beside the accuracy it cost. The VGG-16-BN speed-up is on a CPU without fast INT8 and is not a deployment figure.}
 \label{tab:ratios}
 \end{table}
 
+\begin{table}[!htbp]
+\centering
+\small
+\begin{tabular}{@{}l r r r r@{}}
+\toprule
+Stage & Acc. (\%) & Size (MB) & Latency (ms) & Parameters\\
+\midrule
+FP32 baseline & 93.18 & 3.28 & 4.655 & 855,770\\
+pruned and recovered & 89.20 & 0.84 & 1.649 & 215,282\\
+INT8 & 89.28 & 0.33 & 2.030 & 215,282\\
+\bottomrule
+\end{tabular}
+\caption[ResNet-56, full schedule, Kaggle CPU (transcribed).]{ResNet-56, full schedule (5 steps of 5 DKD epochs, requested ratio 0.5), run on a Kaggle Xeon CPU and transcribed from the notebook log. Parameters fall 3.98 times, MACs from 126.8 M to 32.1 M, the file is 9.81 times smaller, and accuracy falls 3.90 points. On this host the INT8 file is slower (2.030 ms) than the pruned FP32 one (1.617 ms), because the CPU has no fused integer instructions.}
+\label{tab:r56full}
+\end{table}
+
+Checked on 2,000 real test images, the original ResNet-56 scored 93.05\% and the compressed file 89.90\%, and the two agreed on 91.65\% of them. Accuracy after each cut and after its fine-tune was 83.35 $\to$ 90.19, 83.84 $\to$ 89.68, 82.15 $\to$ 88.95, 76.31 $\to$ 88.59 and 64.56 $\to$ 89.20 per cent. The final cut is the hardest: accuracy falls to 64.56\% and fine-tuning restores it to 89.20\%, which is why the last step must act on the pruned network (Section~\ref{sec:defect}).
+
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_stages.pdf}
+\includegraphics[width=0.74\textwidth]{fig_stages.pdf}
 \caption{Accuracy, size and median latency through the four stages for the three recorded runs (size and latency on log axes).}
 \label{fig:stages}
 \end{figure}
@@ -806,11 +836,11 @@ VGG-16-BN (Kaggle CPU) & 15.72$\times$ & 7.98$\times$ & 3.02 & 314.2 to 79.2\\
 Three observations follow. First, quantization alone moved accuracy by at most 0.18 points in these runs (ResNet-20 83.97 to 84.00, ResNet-56 81.73 to 81.91, VGG-16-BN 90.25 to 90.18), so almost all of the accuracy cost belongs to pruning. Second, the pruned FP32 model is already about twice as fast as the baseline on ResNet-20 (1.452 to 0.649 ms); INT8 on a host with fused kernels adds a further drop to 0.460 ms. Third, the recovery stage by itself changed nothing visible once fine-tuning had been done, because the fine-tune had already re-estimated the statistics; its effect is isolated below.
 
 \section{Channels Removed}
-Fig.~\ref{fig:channels} shows the effect of the pruner on ResNet-20. Every layer is halved, with 16, 32 and 64 channels going to 8, 16 and 32. The classifier is untouched. Parameters fall from 272,474 to 68,786, a 74.8\% reduction, because removing half the channels of a convolution removes about three quarters of its weights.
+Fig.~\ref{fig:channels} shows the effect of the pruner on ResNet-20. Every layer is halved, with 16, 32 and 64 channels going to 8, 16 and 32. The classifier is untouched. This is the effective ratio, not only the requested one: the requested ratio of 0.5 and the kept channels agree exactly in every layer. Parameters fall from 272,474 to 68,786, a 74.8\% reduction, because removing half the channels of a convolution removes about three quarters of its weights.
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.8\textwidth]{fig_channels.pdf}
+\includegraphics[width=0.62\textwidth]{fig_channels.pdf}
 \caption{Output channels per layer of ResNet-20 before and after pruning.}
 \label{fig:channels}
 \end{figure}
@@ -820,7 +850,7 @@ Fig.~\ref{fig:sawtooth} shows the accuracy after each cut and after each fine-tu
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_sawtooth.pdf}
+\includegraphics[width=0.75\textwidth]{fig_sawtooth.pdf}
 \caption{Accuracy after each cut and after each fine-tune. ResNet-20 on Apple M5; VGG-16-BN transcribed from the Kaggle run.}
 \label{fig:sawtooth}
 \end{figure}
@@ -830,7 +860,7 @@ At an equal total of six fine-tuning epochs, three steps of two epochs ended at 
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=0.5\textwidth]{fig_oneshot.pdf}
+\includegraphics[width=0.42\textwidth]{fig_oneshot.pdf}
 \caption{Gradual and one-shot pruning at the same fine-tune budget on ResNet-20, one seed each.}
 \label{fig:oneshot}
 \end{figure}
@@ -840,7 +870,7 @@ After a one-shot 0.5 cut with no fine-tuning, ResNet-20 falls from 91.54\% to 10
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_bn.pdf}
+\includegraphics[width=0.8\textwidth]{fig_bn.pdf}
 \caption{Running variance of one batch-norm layer before and after the cut (left) and the accuracy effect (right).}
 \label{fig:bn}
 \end{figure}
@@ -850,7 +880,7 @@ Fig.~\ref{fig:softmax} shows the teacher and student softmax outputs on one real
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_softmax.pdf}
+\includegraphics[width=0.8\textwidth]{fig_softmax.pdf}
 \caption{Teacher and student softmax on one test image at temperature 1 (left) and 4 (right).}
 \label{fig:softmax}
 \end{figure}
@@ -860,7 +890,7 @@ Fig.~\ref{fig:quant} shows one convolution of ResNet-20 (\code{layer2.0.conv1}, 
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_quant.pdf}
+\includegraphics[width=0.8\textwidth]{fig_quant.pdf}
 \caption{Weight histogram of one layer before and after INT8 (left) and the INT8 scale of each output channel (right).}
 \label{fig:quant}
 \end{figure}
@@ -875,8 +905,8 @@ Across the 22 layers of ResNet-20, quantization of a single layer produced an SQ
 \label{fig:sens}
 \end{figure}
 
-\section{Budget Search}
-Three budgets were given to the search on ResNet-20 with shortened recovery schedules (Fig.~\ref{fig:search}, Table~\ref{tab:search}).
+\section{Budget Search}\label{sec:search}
+Three budgets were given to the search on ResNet-20 with shortened recovery schedules: 2 pruning steps of 1 fine-tune epoch, then 3 DKD distillation epochs, with 2 QAT epochs available as a fallback (Fig.~\ref{fig:search}, Table~\ref{tab:search}). In this first search, candidates were scored on the first $\sim$2,560 test images and the winner re-measured on all 10,000, so the search selected on the test set. Section~\ref{sec:valsearch} repeats it on a held-out validation split.
 
 \begin{table}[!htbp]
 \centering
@@ -896,27 +926,51 @@ latency $<0.02$ ms, drop $<0.5$ pp & best trade-off (same configuration) & no & 
 
 \begin{figure}[!htbp]
 \centering
-\includegraphics[width=\textwidth]{fig_search.pdf}
+\includegraphics[width=0.8\textwidth]{fig_search.pdf}
 \caption{Every attempt made under each budget. Green bars met the budget; the dashed line is the baseline accuracy.}
 \label{fig:search}
 \end{figure}
 
-The second budget shows why the ladder exists. Quantization alone gave 0.747 ms, above the 0.45 ms limit. Pruning without recovery reached the latency range but collapsed accuracy to 18--28\%; only the rung that adds gradual fine-tuning with DKD met both limits. The third budget could not be met, and the search returned the most accurate candidate that came closest and said that the budget was missed. The measured latencies of the same file differ between searches (0.747 and 0.734 ms for quantize-only) because search-time measurements are short; borderline results are re-measured at full fidelity before being trusted.
+The second budget shows why the ladder exists. Quantization alone gave 0.747 ms, above the 0.45 ms limit. Pruning without recovery reached the latency range but collapsed accuracy to 18--28\%; only the rung that adds gradual fine-tuning with DKD met both limits. The third budget could not be met, and the search returned the most accurate candidate that came closest and said that the budget was missed. The ratio 0.788 is not a design choice: it is the third midpoint of a binary search over the requested channel ratio in $[0, 0.9]$ (0.45, 0.675, 0.788). It is a requested ratio. Alignment rounding and the protection of the two most sensitive layers at half the ratio mean the network that results is only about 8\% smaller in bytes than the headline 0.5 network (0.106 MB against 0.115 MB), so the effective ratio is far below 0.788. The 84.96\% of this run must not be compared with the headline 84.00\%: the schedules differ (this run adds three distillation epochs and per-layer protection), accuracy here was measured on a different subset with a different baseline (91.80\% against 91.54\%), and latency was timed in a different session. The measured latencies of the same file differ between searches (0.747 and 0.734 ms for quantize-only) because search-time measurements are short; borderline results are re-measured at full fidelity before being trusted.
+
+\section{Budget Search on a Held-out Split}\label{sec:valsearch}
+To remove the test-set selection of the previous section, ResNet-20 was retrained with the same recipe on 45,000 training images (91.67\% on the test set), 5,000 training images were held out, and the same three budgets were searched with candidates ranked and verdicts decided on those 5,000 images. The 10,000 test images scored only the configuration the search returned (Table~\ref{tab:valsearch}).
+
+\begin{table}[!htbp]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabularx}{\textwidth}{@{}X X l r r r@{}}
+\toprule
+Budget & Configuration returned & Met & Val.\ (\%) & Test (\%) & ms\\
+\midrule
+drop $<1$ pp, size $<0.4$ MB & quantize only & yes & 91.98 & 91.71 & 0.478\\
+latency $<0.45$ ms, drop $<8$ pp & prune 0.225, distill, quantize & no & 90.26 & 89.77 & 0.519\\
+latency $<0.02$ ms, drop $<0.5$ pp & prune 0.675, distill, quantize & no & 81.76 & 81.19 & 0.274\\
+\bottomrule
+\end{tabularx}
+\caption{Budget search with selection on a held-out validation split (baseline 92.30\% validation, 91.67\% test). The third budget is infeasible by design.}
+\label{tab:valsearch}
+\end{table}
+
+Two things change. The first budget is met by quantization alone as before, with the test accuracy (91.71\%) matching the baseline. The second budget, which the test-set search reported as met by pruning 0.788 with distillation, is \emph{not} met here: the best configuration reached 90.26\% on validation (89.77\% on test) but timed at 0.519 ms against a 0.45 ms limit, and quantization alone timed at 0.513 ms. The earlier verdict therefore depended on selecting on the test set and on a latency that moves from one session to the next: the same quantize-only file measured 0.747, 0.734, 0.478, 0.513 and 0.509 ms in different searches on the same laptop. A 0.45 ms limit sits inside that spread, so a pass or fail near it should not be read as a property of the method. What does hold in both searches is the ordering of the rungs: pruning without recovery collapses accuracy (27--47\% here), and only the distillation rung restores it.
 
 \section{Verification of the Compressed ONNX File}
-\code{experiments/verify\_onnx.py} runs the original PyTorch model and the compressed ONNX file on the same real CIFAR-10 test images. On 1,000 test images, the original ResNet-20 reached 92.30\% and the compressed file 83.20\%; the two models gave the same prediction on 86.1\% of images. The file therefore works and is close to the original in the sense that matters for a deployed classifier, but it is not identical, and the gap is of the size the pipeline reported (7.5 points).
+\code{experiments/verify\_onnx.py} runs the original PyTorch model and the compressed ONNX file on the same real CIFAR-10 test images. On all 10,000 test images the original ResNet-20 reached 91.54\% and the compressed file 84.00\%, a cost of 7.54 points that matches the pipeline's own measurement, and the two models gave the same prediction on 85.9\% of images. An earlier check on only the first 1,000 test images (in file order, not a random sample) gave 92.30\% and 83.20\%, a gap of 9.1 points; that slice is easier for the original model than the full set, so the full-set figure is the one to use. The file therefore works and is close to the original in the sense that matters for a deployed classifier, but it is not identical: the compressed model disagrees with the original on about one image in seven.
 
 \section{Testing}
-The toolkit has 162 automated tests in five files (core 104, pipeline 31, search 21, workflow 4, dataset registry 2), run by default, and one slow end-to-end test (train, gradual prune, INT8 quantize, report) that is deselected by default and takes about three and a half minutes. Tests cover the host probe and its feature parsing, the alignment rule, dependency-group resolution, pruning edge cases found during review, the KD and DKD losses including the NaN guard, budget parsing, the search ladder, ONNX export and the dataset registry. The stale-model defect of Section~\ref{sec:defect} is covered by a regression test.
+The toolkit has 172 automated tests in six files (core 104, pipeline 31, search 21, workflow 7, ImageNet-scale support 7, dataset registry 2), run by default, and one slow end-to-end test (train, gradual prune, INT8 quantize, report) that is deselected by default and takes about three and a half minutes. They cover the host probe, the alignment rule, dependency groups, the KD and DKD losses, budget parsing, the search ladder, ONNX export and the datasets. The stale-model defect of Section~\ref{sec:defect} is covered by a regression test.
 
 
 \section{Limitations}
 \begin{itemize}
-\item The ResNet-56 result is a two-step, one-epoch smoke run; the full five-step schedule was prepared as a notebook and not yet recorded. Its 11.27-point accuracy cost should not be read as the method's ability on this model.
+\item The ResNet-56 rows of Table~\ref{tab:results} are a two-step, one-epoch smoke run, and its 11.27-point cost should not be read as the method's ability on this model. The full five-step schedule is reported separately in Table~\ref{tab:r56full}; it was run on a Kaggle CPU and transcribed from the notebook log.
 \item The VGG-16-BN figures were transcribed from the Kaggle log and not loaded from the run's \code{results.json}; its latency is that of a Kaggle CPU without fast INT8.
 \item Each experiment was run once; no confidence intervals are given, and differences of about one point (such as gradual against one-shot) are within what a different seed could change.
 \item The ResNet-20 INT8 accuracy cost of 7.54 points is large. Longer fine-tuning or QAT may reduce it, but that was not measured here.
-\item Only residual and plain stacked CNNs on CIFAR-10 were tested. MobileNet-style depthwise networks, larger-resolution data, and the HAR path on a GPU run were not.
+\item FP16 export, quantization-aware training, mixed-precision exclusion and latency-guided pruning are implemented and covered by correctness tests, but none was evaluated in the experiments above, so no claim is made about their benefit. The HAR path was not run to a result and is not part of the findings.
+\item The 7.54-point ResNet-20 cost is a six-epoch result; the 25-epoch ResNet-56 run cost 3.90 points for the same parameter reduction.
+\item Only residual and plain stacked CNNs on CIFAR-10 were tested. MobileNet-style depthwise networks and larger-resolution data were not.
 \end{itemize}
 
 % =====================================================================
@@ -929,7 +983,7 @@ CompressKit composes structured pruning, batch-norm re-estimation, distillation 
 \item In these runs the accuracy cost came from pruning, not from INT8 quantization, which changed accuracy by at most 0.18 points.
 \item Fine-tuning with distillation after each cut recovers most of the accuracy lost by that cut, but at an equal budget gradual pruning did not beat one-shot on ResNet-20.
 \item Batch-norm re-estimation helps (10.87\% to 17.75\% after a 50\% cut) but is not a substitute for fine-tuning.
-\item The budget search is useful because the cheap rungs often do not suffice: pruning without recovery met a latency limit and destroyed accuracy, and only the distillation rung met both.
+\item The budget search is useful because the cheap rungs often do not suffice: pruning without recovery reached lower latency and destroyed accuracy, and only the distillation rung restored it. On a held-out validation split the second budget (0.45 ms) was not met, and its latency limit lies inside the session-to-session timing spread of about 0.3 ms, so a single search near a limit is not conclusive.
 \end{itemize}
 
 \section{Future Scope}

@@ -210,6 +210,28 @@
   from {
     opacity: 0;
     transform: translateY(0.45em);
-    filter: blur(10px);
+    filter: blur(6px);
   }
+}
+
+/* Large blocks (the card, buttons, paragraph) only fade and rise: a blur filter on a big layer is what made the first seconds stutter. */
+.ss-fade {
+  --ss-base: 1.55s;
+  animation: ss-fade 0.9s cubic-bezier(0.2, 0.7, 0.2, 1) calc(var(--ss-base) + var(--ss-d, 0s)) both;
+}
+
+[data-intro='skip'] .ss-fade {
+  --ss-base: 0.1s;
+}
+
+@keyframes ss-fade {
+  from {
+    opacity: 0;
+    transform: translateY(18px);
+  }
+}
+
+/* The floating glass boxes in the hero backdrop stand still while the entrance plays, then drift. */
+.ss-iso-calm .ss-float {
+  animation-play-state: paused;
 }

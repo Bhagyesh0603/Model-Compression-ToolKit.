@@ -88,3 +88,42 @@ def test_cifar_root_prefers_explicit_then_env(tmp_path, monkeypatch):
     assert data.resolve_root(tmp_path / "explicit") == tmp_path / "explicit"
     monkeypatch.delenv(data.CIFAR_ROOT_ENV)
     assert data.resolve_root() in (data.DEFAULT_ROOT, *data._KAGGLE_INPUT.glob("*"))
+
+
+def test_holdout_split_is_deterministic_disjoint_and_sized():
+    from compresskit.zoo.data import holdout_indices
+
+    val, fit = holdout_indices(5000)
+    assert len(val) == 5000 and len(fit) == 45_000
+    assert set(val).isdisjoint(fit) and sorted(val + fit) == list(range(50_000))
+    assert holdout_indices(5000) == (val, fit)
+
+
+def test_holdout_is_cifar_only():
+    with pytest.raises(ValueError, match="cifar10"):
+        get_bundle("folder", None, holdout_val=100)
+
+
+def test_search_selects_on_validation_and_reports_test_separately(tmp_path):
+    """The loader the search ranks on is not the one that scores the winner."""
+    import torch
+    from torch.utils.data import DataLoader, TensorDataset
+
+    from compresskit.search import compress
+
+    torch.manual_seed(0)
+    model = torch.nn.Sequential(torch.nn.Conv2d(3, 8, 3, padding=1), torch.nn.ReLU(), torch.nn.AdaptiveAvgPool2d(1),
+                                torch.nn.Flatten(), torch.nn.Linear(8, 4)).eval()
+    mk = lambda n: DataLoader(TensorDataset(torch.randn(n, 3, 8, 8), torch.randint(0, 4, (n,))), batch_size=8)  # noqa: E731
+    seen = {"val": 0}
+
+    class Counting(DataLoader):
+        def __iter__(self):
+            seen["val"] += 1
+            return super().__iter__()
+
+    val = Counting(TensorDataset(torch.randn(16, 3, 8, 8), torch.randint(0, 4, (16,))), batch_size=8)
+    result = compress(model, mk(16), mk(16), budget="", train_loader=mk(16), input_shape=(1, 3, 8, 8),
+                      workdir=tmp_path, select_loader=val, verbose=False, search_runs=5)
+    assert seen["val"] > 0, "the search never read the validation loader"
+    assert result.test_accuracy and set(result.test_accuracy) == {"baseline", "final"}

@@ -1,0 +1,153 @@
+
+=== meets with quantization alone: accuracy_drop<1%,size<0.4mb
+{
+ "title": "meets with quantization alone",
+ "budget": "accuracy_drop<1%,size<0.4mb",
+ "met": true,
+ "chosen": "quantize-only",
+ "validation": {
+  "accuracy": 0.9198,
+  "baseline": 0.923,
+  "median_ms": 0.4777290014317259,
+  "size_mb": 0.3147287368774414
+ },
+ "test": {
+  "baseline": 0.9167,
+  "final": 0.9171
+ },
+ "attempts": [
+  {
+   "label": "quantize-only",
+   "met": true,
+   "failures": [],
+   "val_accuracy": 0.9198,
+   "median_ms": 0.4777290014317259
+  }
+ ]
+}
+
+=== needs pruning and distillation: latency<0.45ms,accuracy_drop<8%
+{
+ "title": "needs pruning and distillation",
+ "budget": "latency<0.45ms,accuracy_drop<8%",
+ "met": false,
+ "chosen": "prune@0.225+distill+quantize",
+ "validation": {
+  "accuracy": 0.9026,
+  "baseline": 0.923,
+  "median_ms": 0.5185835034353659,
+  "size_mb": 0.2154703140258789
+ },
+ "test": {
+  "baseline": 0.9167,
+  "final": 0.8977
+ },
+ "attempts": [
+  {
+   "label": "quantize-only",
+   "met": false,
+   "failures": [
+    "latency 0.513 ms > 0.450 ms"
+   ],
+   "val_accuracy": 0.91455078125,
+   "median_ms": 0.5126039977767505
+  },
+  {
+   "label": "prune@0.450+quantize",
+   "met": false,
+   "failures": [
+    "accuracy drop 64.79 pp > 8.00 pp"
+   ],
+   "val_accuracy": 0.2705078125,
+   "median_ms": 0.3623749944381416
+  },
+  {
+   "label": "prune@0.225+quantize",
+   "met": false,
+   "failures": [
+    "accuracy drop 45.58 pp > 8.00 pp"
+   ],
+   "val_accuracy": 0.4672,
+   "median_ms": 0.38662500446662307
+  },
+  {
+   "label": "prune@0.113+quantize",
+   "met": false,
+   "failures": [
+    "latency 0.469 ms > 0.450 ms"
+   ],
+   "val_accuracy": 0.8564453125,
+   "median_ms": 0.46864550677128136
+  },
+  {
+   "label": "prune@0.225+distill+quantize",
+   "met": false,
+   "failures": [
+    "latency 0.519 ms > 0.450 ms"
+   ],
+   "val_accuracy": 0.9026,
+   "median_ms": 0.5185835034353659
+  }
+ ]
+}
+
+=== cannot be met: latency<0.02ms,accuracy_drop<0.5%
+{
+ "title": "cannot be met",
+ "budget": "latency<0.02ms,accuracy_drop<0.5%",
+ "met": false,
+ "chosen": "prune@0.675+distill+quantize",
+ "validation": {
+  "accuracy": 0.8176,
+  "baseline": 0.923,
+  "median_ms": 0.27447899628896266,
+  "size_mb": 0.0820608139038086
+ },
+ "test": {
+  "baseline": 0.9167,
+  "final": 0.8119
+ },
+ "attempts": [
+  {
+   "label": "quantize-only",
+   "met": false,
+   "failures": [
+    "latency 0.509 ms > 0.020 ms"
+   ],
+   "val_accuracy": 0.91455078125,
+   "median_ms": 0.5087289973744191
+  },
+  {
+   "label": "prune@0.450+quantize",
+   "met": false,
+   "failures": [
+    "latency 0.358 ms > 0.020 ms",
+    "accuracy drop 68.65 pp > 0.50 pp"
+   ],
+   "val_accuracy": 0.23193359375,
+   "median_ms": 0.35775000287685543
+  },
+  {
+   "label": "prune@0.675+quantize",
+   "met": false,
+   "failures": [
+    "latency 0.299 ms > 0.020 ms",
+    "accuracy drop 79.88 pp > 0.50 pp"
+   ],
+   "val_accuracy": 0.11962890625,
+   "median_ms": 0.2988539999932982
+  },
+  {
+   "label": "prune@0.675+distill+quantize",
+   "met": false,
+   "failures": [
+    "latency 0.274 ms > 0.020 ms",
+    "accuracy drop 10.54 pp > 0.50 pp"
+   ],
+   "val_accuracy": 0.8176,
+   "median_ms": 0.27447899628896266
+  }
+ ]
+}
+
+wrote artifacts/val_search_results.json

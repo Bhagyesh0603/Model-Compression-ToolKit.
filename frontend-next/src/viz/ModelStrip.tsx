@@ -35,7 +35,7 @@ export function ModelStrip({
   const pat = (suffix: string) => `${uid}-${suffix}`;
 
   return (
-    <svg viewBox={`0 0 ${W} ${H}`} className={className} role="img" aria-label={label} preserveAspectRatio="xMidYMax meet">
+    <svg viewBox={`0 0 ${W} ${H}`} className={className} role="img" aria-label={label} preserveAspectRatio="xMidYMax meet" shapeRendering="crispEdges">
       <defs>
         {(
           [

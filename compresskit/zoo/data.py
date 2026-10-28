@@ -52,10 +52,34 @@ _eval_tf = transforms.Compose([
 # processes cost more in spawn/IPC overhead than they save: measured on this host,
 # num_workers=0 runs an epoch in 14.2s vs 24.0s with two workers, and avoids the
 # worker-abort crashes that spawn-based loading hits on macOS.
-def train_loader(batch_size=128, root=None, num_workers=0):
+HOLDOUT_SEED = 0
+
+
+def holdout_indices(n_val: int, total: int = 50_000) -> tuple[list[int], list[int]]:
+    """(validation, fit) positions in the training set, fixed by HOLDOUT_SEED.
+
+    Carved from the 50,000 training images so a configuration can be *chosen* on
+    data the test set never touches. Anything trained on the full 50,000 has
+    already seen these images, so a model that is meant to be selected on this
+    split must also be trained without it (`--holdout-val` on every command).
+    """
+    perm = torch.randperm(total, generator=torch.Generator().manual_seed(HOLDOUT_SEED)).tolist()
+    return sorted(perm[:n_val]), sorted(perm[n_val:])
+
+
+def train_loader(batch_size=128, root=None, num_workers=0, holdout=0):
     ds = datasets.CIFAR10(str(resolve_root(root)), train=True, download=True, transform=_train_tf)
+    if holdout:
+        ds = Subset(ds, holdout_indices(holdout, len(ds))[1])
     return DataLoader(ds, batch_size=batch_size, shuffle=True,
                       num_workers=num_workers, drop_last=True)
+
+
+def val_loader(n_val, batch_size=256, root=None, num_workers=0):
+    """The held-out slice of the training set, with eval transforms."""
+    ds = datasets.CIFAR10(str(resolve_root(root)), train=True, download=True, transform=_eval_tf)
+    return DataLoader(Subset(ds, holdout_indices(n_val, len(ds))[0]), batch_size=batch_size,
+                      shuffle=False, num_workers=num_workers)
 
 
 def test_loader(batch_size=256, root=None, num_workers=0):
@@ -63,7 +87,7 @@ def test_loader(batch_size=256, root=None, num_workers=0):
     return DataLoader(ds, batch_size=batch_size, shuffle=False, num_workers=num_workers)
 
 
-def calibration_loader(n=512, batch_size=64, root=None, seed=0):
+def calibration_loader(n=512, batch_size=64, root=None, seed=0, holdout=0):
     """Held-out-from-test calibration data, drawn from the TRAIN split.
 
     Quantization calibration and BN re-estimation must never touch the test set,
@@ -71,5 +95,6 @@ def calibration_loader(n=512, batch_size=64, root=None, seed=0):
     """
     ds = datasets.CIFAR10(str(resolve_root(root)), train=True, download=True, transform=_eval_tf)
     g = torch.Generator().manual_seed(seed)
-    idx = torch.randperm(len(ds), generator=g)[:n].tolist()
+    pool = holdout_indices(holdout, len(ds))[1] if holdout else list(range(len(ds)))
+    idx = [pool[i] for i in torch.randperm(len(pool), generator=g)[:n].tolist()]
     return DataLoader(Subset(ds, idx), batch_size=batch_size, shuffle=False, num_workers=0)

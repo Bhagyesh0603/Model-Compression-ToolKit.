@@ -21,12 +21,22 @@ warnings.filterwarnings("ignore", category=UserWarning)
 PRETRAINED_ARCHS = ("har_resnet18", "resnet18_pretrained")
 
 
+def _is_pretrained(arch: str) -> bool:
+    from .zoo.torchvision_models import is_torchvision_arch
+
+    return arch in PRETRAINED_ARCHS or is_torchvision_arch(arch)
+
+
 def _dataset_name(args, meta=None) -> str:
     """Explicit --dataset, else what the checkpoint was trained on, else a guess from --arch."""
     if getattr(args, "dataset", None):
         return args.dataset
     if meta and meta.get("dataset"):
         return meta["dataset"]
+    from .zoo.torchvision_models import is_torchvision_arch
+
+    if is_torchvision_arch(args.arch):
+        return "imagenet"
     return "har" if args.arch in PRETRAINED_ARCHS else "cifar10"
 
 
@@ -34,7 +44,8 @@ def _bundle(args, meta=None):
     from .zoo.datasets import get_bundle
 
     return get_bundle(_dataset_name(args, meta), getattr(args, "data_root", None),
-                      getattr(args, "input_size", 224))
+                      getattr(args, "input_size", 224), getattr(args, "test_samples", None),
+                      getattr(args, "holdout_val", 0))
 
 
 def _loaders(args, bundle):
@@ -49,7 +60,12 @@ def _loaders(args, bundle):
 def _build_arch(arch: str, num_classes: int):
     from .zoo.har import build_har_resnet18
     from .zoo.models import build
+    from .zoo.torchvision_models import IMAGENET_CLASSES, build_torchvision, is_torchvision_arch, replace_head
 
+    if is_torchvision_arch(arch):
+        model = build_torchvision(arch)
+        # A different class count means a new, untrained head: train it with `compresskit train`.
+        return model if num_classes == IMAGENET_CLASSES else replace_head(model, num_classes)
     if arch in PRETRAINED_ARCHS:
         return build_har_resnet18(num_classes=num_classes, pretrained=True)
     return build(arch, num_classes=num_classes)
@@ -61,10 +77,14 @@ def _load_model(args):
 
     if args.model:
         model, meta = load_model(args.model)
-        print(f"loaded {args.model} ({meta.get('arch', '?')}, "
-              f"baseline accuracy {meta.get('accuracy', float('nan')) * 100:.2f}%)")
+        accuracy = meta.get("accuracy")
+        print(f"loaded {args.model} ({meta.get('arch', '?')}"
+              + (f", baseline accuracy {accuracy * 100:.2f}%)" if accuracy is not None else ")"))
         return model, meta
-    print(f"no --model given; using an untrained {args.arch} (numbers will be meaningless)")
+    if _is_pretrained(args.arch):
+        print(f"no --model given; using {args.arch} with its pretrained ImageNet weights")
+    else:
+        print(f"no --model given; using an untrained {args.arch} (numbers will be meaningless)")
     return _build_arch(args.arch, _bundle(args).num_classes), {}
 
 
@@ -105,20 +125,29 @@ def cmd_train(args) -> int:
     from .core.benchmark import accuracy_torch
     from .zoo.train import TrainConfig, save_model, train
 
+    from .zoo.torchvision_models import is_torchvision_arch
+
+    if is_torchvision_arch(args.arch) and _dataset_name(args) == "imagenet":
+        print(f"{args.arch} is already trained (ImageNet weights); compress it directly with "
+              f"`compresskit pipeline --arch {args.arch} --dataset imagenet --data-root ...`", file=sys.stderr)
+        return 2
     out = Path(args.out or f"checkpoints/{args.arch}_fp32.pt")
     if args.skip_if_exists and out.exists():
         print(f"{out} already exists — skipping training (--skip-if-exists)")
         return 0
 
     bundle = _bundle(args)
-    pretrained = args.arch in PRETRAINED_ARCHS
+    pretrained = _is_pretrained(args.arch)
     epochs = args.epochs or (10 if pretrained else 60)
     lr = args.lr or (0.01 if pretrained else 0.1)
     batch = args.batch_size or (128 if bundle.name == "cifar10" else 64)
-    tl, vl = bundle.train_loader(batch_size=batch), bundle.test_loader(batch_size=batch)
+    tl, test = bundle.train_loader(batch_size=batch), bundle.test_loader(batch_size=batch)
+    # With a held-out split, the per-epoch curve is read on it, so the test set is
+    # only looked at once, at the end.
+    vl = bundle.val_loader(batch_size=batch) if bundle.val_loader else test
     model = _build_arch(args.arch, bundle.num_classes)
 
-    if pretrained:
+    if pretrained and not is_torchvision_arch(args.arch):
         # Same recipe as the original notebook: keep the ImageNet backbone
         # frozen and fine-tune only layer4 and the new head.
         for name, param in model.named_parameters():
@@ -133,10 +162,11 @@ def cmd_train(args) -> int:
               f"{stats['seconds']:.1f}s", flush=True)
 
     train(model, tl, TrainConfig(epochs=epochs, lr=lr), val_loader=vl, on_epoch=on_epoch)
-    accuracy = accuracy_torch(model, vl)
+    accuracy = accuracy_torch(model, test)
     path = save_model(model, out, {
         "arch": args.arch, "epochs": epochs, "accuracy": accuracy, "dataset": bundle.name,
         "input_shape": list(bundle.input_shape), "class_names": bundle.class_names, "history": history,
+        "holdout_val": getattr(args, "holdout_val", 0),
     })
     print(f"final top-1 {accuracy * 100:.2f}% -> {path}")
     return 0
@@ -205,9 +235,13 @@ def cmd_compress(args) -> int:
     model, meta = _load_model(args)
     bundle = _bundle(args, meta)
     calib, test, train = _loaders(args, bundle)
+    select = bundle.val_loader(batch_size=256) if bundle.val_loader else None
+    if select is not None:
+        print("selection on the held-out validation split; the test set is only used to report the winner")
 
     result = compress(
         model, calib, test,
+        select_loader=select,
         budget=args.budget,
         train_loader=train,
         input_shape=bundle.input_shape,
@@ -229,7 +263,17 @@ def cmd_compress(args) -> int:
         extras = _report_extras(result.chosen.result, bundle, meta, test) if result.chosen else {}
         print(f"\nreport -> {render_search(result, args.report, **extras)}")
     if args.json and result.chosen:
-        print(f"json   -> {result.chosen.result.save_json(args.json)}")
+        written = result.chosen.result.save_json(args.json)
+        if result.test_accuracy:
+            import json as _json
+            payload = _json.loads(Path(written).read_text())
+            payload["selection"] = {"split": "validation (held out of train)", "test_accuracy": result.test_accuracy}
+            Path(written).write_text(_json.dumps(payload, indent=2))
+        print(f"json   -> {written}")
+    if result.test_accuracy:
+        t = result.test_accuracy
+        print(f"held-out TEST accuracy of the chosen configuration: baseline {t['baseline'] * 100:.2f}% -> "
+              f"{t['final'] * 100:.2f}%  (selection used validation only)")
     return 0 if result.met else 1
 
 
@@ -239,16 +283,24 @@ def build_parser() -> argparse.ArgumentParser:
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     def add_data_args(sub):
-        sub.add_argument("--dataset", choices=["cifar10", "har", "folder"],
+        sub.add_argument("--dataset", choices=["cifar10", "cifar10-upscaled", "har", "folder", "imagenet"],
                          help="default: what the checkpoint was trained on, else guessed from --arch")
         sub.add_argument("--data-root", help="dataset location (har: folder with Training_set.csv; "
-                                             "folder: one sub-directory per class)")
-        sub.add_argument("--input-size", type=int, default=224, help="image size for --dataset folder")
+                                             "folder: one sub-directory per class; "
+                                             "imagenet: train/ and val/ with 1000 class folders; "
+                                             "cifar10-upscaled: CIFAR-10 at --input-size, for tv: models)")
+        sub.add_argument("--input-size", type=int, default=224, help="image size for --dataset folder/imagenet")
+        sub.add_argument("--holdout-val", type=int, default=0,
+                         help="cifar10: hold this many training images out as a validation split (e.g. 5000); "
+                              "the model must be trained with the same flag, or it has seen them")
+        sub.add_argument("--test-samples", type=int, help="--dataset imagenet/cifar10-upscaled: score this many test "
+                                                          "images (default 2000, 0 = all)")
 
     def add_model_args(sub, calib_default=512):
         sub.add_argument("--model", help="checkpoint from `compresskit train`")
         sub.add_argument("--arch", default="resnet20",
-                         help="architecture if no --model (resnet20/56/18, vgg16_bn, har_resnet18)")
+                         help="architecture if no --model (resnet20/56/18, vgg16_bn, har_resnet18, "
+                              "or tv:<name> for any torchvision ImageNet model, e.g. tv:vgg16_bn)")
         sub.add_argument("--calib", type=int, default=calib_default, help="calibration samples (train split)")
         add_data_args(sub)
 
