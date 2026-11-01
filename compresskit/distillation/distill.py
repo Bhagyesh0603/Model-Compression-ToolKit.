@@ -24,6 +24,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..core.amp import Scaler, autocast, prepare_batch, prepare_model
 from ..core.host import training_device
 
 
@@ -91,8 +92,17 @@ class DistillConfig:
     warmup_epochs: int = 1
     grad_clip: float = 0.0
     device: str | None = None
+    # fp16 autocast on CUDA (no-op elsewhere). Losses are always computed in fp32.
+    amp: bool = True
+    # Micro-batches per optimizer step; the loader's batch is the micro-batch.
+    accum_steps: int = 1
+    # Leave the student on `device` instead of returning it on CPU, so a caller
+    # that goes straight on to BN recalibration / evaluation skips a transfer.
+    keep_on_device: bool = False
 
     def __post_init__(self):
+        if self.accum_steps < 1:
+            raise ValueError("accum_steps must be >= 1")
         if self.loss not in ("kd", "dkd"):
             raise ValueError(f"unknown loss {self.loss!r}; choose 'kd' or 'dkd'")
         if self.alpha is None:
@@ -140,13 +150,13 @@ def distill(
             "updated a single weight"
         )
 
-    student.to(device).train()
+    prepare_model(student, device).train()
     # The teacher is only ever read from, but it belongs to the caller — freeze
     # it for the duration and hand it back exactly as it arrived, or a direct
     # `distill(...)` call leaves the caller's model permanently untrainable.
     teacher_was_training = teacher.training
     teacher_grads = [p.requires_grad for p in teacher.parameters()]
-    teacher.to(device).eval()
+    prepare_model(teacher, device).eval()
     for param in teacher.parameters():
         param.requires_grad_(False)
 
@@ -165,9 +175,15 @@ def distill(
             nesterov=True,
         )
 
+        scaler = Scaler(device, config.amp)
+        accum = config.accum_steps
         batches = len(loader)
         for epoch in range(config.epochs):
-            totals = {"loss": 0.0, "ce": 0.0, "kd": 0.0, "correct": 0, "seen": 0}
+            # Accumulated on-device and read back once per epoch: a .item() per
+            # batch is a GPU sync that stalls the pipeline on every step.
+            zero = torch.zeros((), device=device)
+            sums = {"loss": zero.clone(), "ce": zero.clone(), "kd": zero.clone(), "correct": zero.clone()}
+            seen = 0
 
             for index, (images, targets) in enumerate(loader):
                 for group in optimizer.param_groups:
@@ -175,12 +191,15 @@ def distill(
                         config.lr, epoch + index / max(batches, 1), config.epochs, config.warmup_epochs
                     )
 
-                images, targets = images.to(device), targets.to(device)
+                images, targets = prepare_batch(images, device), targets.to(device, non_blocking=True)
 
-                with torch.no_grad():
-                    teacher_logits = teacher(images)
-                student_logits = student(images)
+                with autocast(device, config.amp):
+                    with torch.no_grad():
+                        teacher_logits = teacher(images)
+                    student_logits = student(images)
 
+                # Loss math in fp32: a temperature softmax in fp16 is a NaN source.
+                student_logits, teacher_logits = student_logits.float(), teacher_logits.float()
                 ce = F.cross_entropy(student_logits, targets)
                 if config.loss == "kd":
                     soft = kd_loss(student_logits, teacher_logits, config.temperature)
@@ -191,18 +210,24 @@ def distill(
                     )
                     loss = config.ce_weight * ce + soft
 
-                optimizer.zero_grad(set_to_none=True)
-                loss.backward()
-                if config.grad_clip:
-                    nn.utils.clip_grad_norm_(student.parameters(), config.grad_clip)
-                optimizer.step()
+                if index % accum == 0:
+                    optimizer.zero_grad(set_to_none=True)
+                scaler.backward(loss / accum)
+                if (index + 1) % accum == 0 or index + 1 == batches:
+                    if config.grad_clip:
+                        scaler.unscale_(optimizer)
+                        nn.utils.clip_grad_norm_(student.parameters(), config.grad_clip)
+                    scaler.step(optimizer)
 
                 count = targets.size(0)
-                totals["loss"] += loss.item() * count
-                totals["ce"] += ce.item() * count
-                totals["kd"] += soft.item() * count
-                totals["correct"] += int((student_logits.argmax(1) == targets).sum())
-                totals["seen"] += count
+                sums["loss"] += loss.detach() * count
+                sums["ce"] += ce.detach() * count
+                sums["kd"] += soft.detach() * count
+                sums["correct"] += (student_logits.argmax(1) == targets).sum()
+                seen += count
+
+            totals = {k: float(v) for k, v in sums.items()}
+            totals["seen"] = seen
 
             seen = max(totals["seen"], 1)
             stats = {
@@ -220,4 +245,5 @@ def distill(
             param.requires_grad_(required)
         teacher.train(teacher_was_training)
 
-    return student.cpu().eval()
+    student.eval()
+    return student if config.keep_on_device else student.cpu()

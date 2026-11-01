@@ -20,6 +20,7 @@ import torch
 import torch.nn as nn
 
 from .core import host as host_mod
+from .core.host import training_device
 from .core.benchmark import Measurement, accuracy_torch, compression_score, efficiency_score, measure
 from .core.export import count_parameters, nodes_for_layers, to_onnx
 from .distillation import DistillConfig, distill
@@ -138,6 +139,9 @@ class Pipeline:
         warmup: int = 50,
         runs: int = 200,
         accuracy_limit: int | None = None,
+        device: str | None = None,
+        amp: bool = True,
+        accum_steps: int = 1,
     ):
         # The untouched original is both the accuracy reference and the
         # distillation teacher, so it must survive every in-place stage.
@@ -151,7 +155,16 @@ class Pipeline:
         self.warmup = warmup
         self.runs = runs
         self.accuracy_limit = accuracy_limit
+        # Everything that is not deployment measurement (BN re-estimation,
+        # in-loop accuracy, fine-tuning) runs here. Latency and the reported
+        # accuracy stay on CPU / ONNX Runtime, the actual deployment target.
+        self.device = device or training_device()
+        self.amp = amp
+        # Micro-batches per optimizer step in every fine-tune; set when the loader's
+        # batch is smaller than the batch the recipe was tuned for (memory-limited GPU).
+        self.accum_steps = accum_steps
         self.stages: list[Stage] = []
+        self._fp32_artifact: Path | None = None
         self.workdir.mkdir(parents=True, exist_ok=True)
 
     def prune(
@@ -203,7 +216,8 @@ class Pipeline:
     def preflight(self) -> str:
         """What this host can do and what the plan implies — before spending compute."""
         host = host_mod.probe()
-        calibration_size = sum(len(b[0]) for b in self.calibration_loader)
+        dataset = getattr(self.calibration_loader, "dataset", None)
+        calibration_size = len(dataset) if dataset is not None else sum(len(b[0]) for b in self.calibration_loader)
         protected = [type(m).__name__ for m in classifier_layers(self.model)]
 
         lines = [
@@ -222,8 +236,31 @@ class Pipeline:
             lines.append("! quantize is not last — it will be reordered or rejected at run()")
         return "\n".join(lines)
 
+    @staticmethod
+    def _has_bn(model: nn.Module) -> bool:
+        return any(isinstance(m, nn.modules.batchnorm._BatchNorm) for m in model.modules())
+
+    def _release_gpu(self) -> None:
+        """Hand the teacher's GPU memory back once fine-tuning is over."""
+        self.original.cpu()
+        if torch.cuda.is_available():
+            torch.cuda.empty_cache()
+
+    def _checkpoint_step(self, model: nn.Module, step: int, history: list[dict], log) -> None:
+        """Persist the pruned model after each step, so a session that dies
+        (Kaggle's 12 h limit) still leaves a usable model and its accuracy curve."""
+        from .zoo.train import save_model
+
+        path = save_model(model, self.workdir / f"prune_step{step}.pt",
+                          {"input_shape": list(self.input_shape), "prune_step": step})
+        (self.workdir / "prune_history.json").write_text(json.dumps(history, indent=2))
+        log(f"  [step {step}] checkpoint -> {path}")
+
     def _measure(self, name: str, model: nn.Module, precision: str = "fp32", notes: str = "") -> Measurement:
         artifact = to_onnx(model, self.workdir / f"{name}.onnx", self.input_shape)
+        # Every non-quantize stage ends here, so this is always the FP32 export of
+        # the model as it currently stands -- exactly what `quantize` needs.
+        self._fp32_artifact = artifact
         return measure(
             stage=name,
             artifact=artifact,
@@ -288,27 +325,45 @@ class Pipeline:
                         )
                     return _log_epoch
 
+                train_batch = getattr(train_data, "batch_size", None)
+                # Linear LR scaling, downwards only: the 0.005 default was tuned at
+                # batch 128, so a smaller (memory-limited) batch gets a smaller step.
+                effective_batch = (train_batch or 0) * self.accum_steps
+                if effective_batch and effective_batch < 128:
+                    fine_tune_lr = fine_tune_lr * effective_batch / 128
+
+                if not self._has_bn(self.model):
+                    log("  no BatchNorm layers in this model — BN re-estimation is skipped, "
+                        "recovery relies on fine-tuning alone")
+
                 def fine_tune_step(m, step_taken):
-                    recalibrate_bn(m, self.calibration_loader, batches=8)
+                    device = self.device
+                    recalibrate_bn(m, self.calibration_loader, batches=8, device=device)
                     if fine_tune_epochs > 0:
                         row = {
                             "step": step_taken,
                             "params": count_parameters(m),
-                            "acc_after_cut": accuracy_torch(m, self.test_loader),
+                            "acc_after_cut": accuracy_torch(m, self.test_loader, device=device),
                         }
                         log(f"  [step {step_taken}/{pruner.config.steps}] fine-tuning {fine_tune_epochs} epoch(s) ({distill_loss})...")
                         distill(
                             m,
                             self.original,
                             train_data,
-                            DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss),
+                            DistillConfig(epochs=fine_tune_epochs, lr=fine_tune_lr, loss=distill_loss,
+                                          device=device, amp=self.amp, accum_steps=self.accum_steps,
+                                          keep_on_device=True),
                             on_epoch=make_epoch_logger(step_taken),
                         )
-                        recalibrate_bn(m, self.calibration_loader, batches=8)
-                        row["acc_after_finetune"] = accuracy_torch(m, self.test_loader)
+                        recalibrate_bn(m, self.calibration_loader, batches=8, device=device)
+                        row["acc_after_finetune"] = accuracy_torch(m, self.test_loader, device=device)
                         log(f"  [step {step_taken}] accuracy {row['acc_after_cut'] * 100:.2f}% after cut -> "
                             f"{row['acc_after_finetune'] * 100:.2f}% after fine-tune")
                         prune_history.append(row)
+                    # The pruner edits this module in place on CPU, so it goes back there.
+                    m.cpu()
+                    if fine_tune_epochs > 0:
+                        self._checkpoint_step(m, step_taken, prune_history, log)
 
                 def on_step(m, step_taken):
                     fine_tune_step(m, step_taken)
@@ -325,6 +380,7 @@ class Pipeline:
                 if fine_tune_epochs > 0:
                     fine_tune_step(pruner.model, pruner.config.steps)
 
+                self._release_gpu()
                 self.model = pruner.model
                 prune_stats = pruner.stats()
                 log(f"  {prune_stats.summary()}")
@@ -334,8 +390,14 @@ class Pipeline:
                 measurement = self._measure(name, self.model, notes=notes)
 
             elif stage.kind == "recover":
-                recalibrate_bn(self.model, self.calibration_loader, batches=stage.options.get("batches"))
-                measurement = self._measure(name, self.model, notes="BN statistics re-estimated")
+                has_bn = self._has_bn(self.model)
+                recalibrate_bn(self.model, self.calibration_loader, batches=stage.options.get("batches"),
+                               device=self.device)
+                self.model.cpu()
+                measurement = self._measure(
+                    name, self.model,
+                    notes="BN statistics re-estimated" if has_bn else "no BatchNorm layers — nothing to re-estimate",
+                )
 
             elif stage.kind == "distill":
                 options = dict(stage.options)
@@ -350,8 +412,12 @@ class Pipeline:
                         "distillation needs training data — pass train_loader= to Pipeline() "
                         "or loader= to .distill()"
                     )
+                options.setdefault("device", self.device)
+                options.setdefault("amp", self.amp)
+                options.setdefault("accum_steps", self.accum_steps)
                 config = DistillConfig(**options)
                 distill(self.model, self.original, train_data, config)
+                self._release_gpu()
                 measurement = self._measure(
                     name, self.model, notes=f"{config.loss} distillation, {config.epochs} epochs"
                 )
@@ -364,6 +430,8 @@ class Pipeline:
                     raise ValueError(
                         "QAT needs training data — pass train_loader= to Pipeline() or loader= to .qat()"
                     )
+                options.setdefault("device", self.device)
+                options.setdefault("amp", self.amp)
                 config = QATConfig(**options)
                 qat(self.model, train_data, config)
                 measurement = self._measure(
@@ -371,7 +439,9 @@ class Pipeline:
                 )
 
             elif stage.kind == "quantize":
-                source = to_onnx(self.model, self.workdir / f"{name}_fp32.onnx", self.input_shape)
+                # Reuse the previous stage's export instead of tracing the same graph again.
+                source = self._fp32_artifact or to_onnx(
+                    self.model, self.workdir / f"{name}_fp32.onnx", self.input_shape)
                 options = dict(stage.options)
                 # Layer names are what callers (and the sensitivity ranking)
                 # know; node names only exist once this exact graph is

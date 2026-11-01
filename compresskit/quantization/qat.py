@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..core.amp import Scaler, autocast, prepare_batch, prepare_model
 from ..core.host import training_device
 from ..distillation.distill import cosine_lr
 
@@ -93,6 +94,7 @@ class QATConfig:
     device: str | None = None
     bits: int = 8
     per_channel: bool = True
+    amp: bool = True  # fp16 autocast on CUDA; the fake-quantize math stays fp32 on the weights
 
     def __post_init__(self):
         if self.device is None:
@@ -124,7 +126,7 @@ def qat(
             "single weight"
         )
 
-    model.to(device).train()
+    prepare_model(model, device).train()
 
     with _fake_quantized(model, bits=config.bits, per_channel=config.per_channel):
         optimizer = torch.optim.SGD(
@@ -135,9 +137,12 @@ def qat(
             nesterov=True,
         )
 
+        scaler = Scaler(device, config.amp)
         batches = len(loader)
         for epoch in range(config.epochs):
-            totals = {"loss": 0.0, "correct": 0, "seen": 0}
+            loss_sum = torch.zeros((), device=device)
+            correct = torch.zeros((), device=device)
+            seen_n = 0
 
             for index, (images, targets) in enumerate(loader):
                 for group in optimizer.param_groups:
@@ -145,20 +150,25 @@ def qat(
                         config.lr, epoch + index / max(batches, 1), config.epochs, config.warmup_epochs
                     )
 
-                images, targets = images.to(device), targets.to(device)
-                logits = model(images)
+                images, targets = prepare_batch(images, device), targets.to(device, non_blocking=True)
+                with autocast(device, config.amp):
+                    logits = model(images)
+                logits = logits.float()
                 loss = F.cross_entropy(logits, targets)
 
                 optimizer.zero_grad(set_to_none=True)
-                loss.backward()
+                scaler.backward(loss)
                 if config.grad_clip:
+                    scaler.unscale_(optimizer)
                     nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
-                optimizer.step()
+                scaler.step(optimizer)
 
                 count = targets.size(0)
-                totals["loss"] += loss.item() * count
-                totals["correct"] += int((logits.argmax(1) == targets).sum())
-                totals["seen"] += count
+                loss_sum += loss.detach() * count
+                correct += (logits.argmax(1) == targets).sum()
+                seen_n += count
+
+            totals = {"loss": float(loss_sum), "correct": float(correct), "seen": seen_n}
 
             seen = max(totals["seen"], 1)
             stats = {

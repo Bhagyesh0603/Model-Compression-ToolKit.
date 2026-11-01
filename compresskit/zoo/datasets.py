@@ -12,17 +12,62 @@ every machine, the same rule `har.py` uses.
 
 from __future__ import annotations
 
+import os
 from dataclasses import dataclass
 from pathlib import Path
 
 import torch
+import torch.nn.functional as F
 from torch.utils.data import DataLoader, Dataset, Subset
 from torchvision import transforms
 from torchvision.datasets import ImageFolder
 
+from ..core.host import training_device
+
 TEST_FRACTION = 0.15
 IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
+
+
+def loader_kwargs(num_workers: int | None = None) -> dict:
+    """DataLoader settings that keep a GPU fed: several persistent workers and
+    pinned host memory. `None` picks min(4, cpu_count); 0 disables workers."""
+    workers = min(4, os.cpu_count() or 1) if num_workers is None else num_workers
+    kwargs = {"num_workers": workers, "pin_memory": torch.cuda.is_available()}
+    if workers > 0:
+        kwargs["persistent_workers"] = True
+    return kwargs
+
+
+class UpscaledLoader:
+    """Wraps a loader of small images and resizes each whole batch to `size`.
+
+    Resizing 32x32 -> 224x224 per sample with PIL on a 4-core CPU, every epoch,
+    starves the GPU. The workers here only decode/augment 32x32 images (49x fewer
+    pixels); the bilinear upscale is one batched `interpolate`, done on `device`
+    (the GPU for training loaders). Normalisation is linear, so normalising before
+    the resize equals resizing before it, and bilinear upscaling needs no
+    antialiasing. Targets stay on the CPU.
+    """
+
+    def __init__(self, loader, size: int, device: str = "cpu"):
+        self.loader, self.size, self.device = loader, size, device
+
+    def __len__(self):
+        return len(self.loader)
+
+    @property
+    def dataset(self):
+        return self.loader.dataset
+
+    @property
+    def batch_size(self):
+        return self.loader.batch_size
+
+    def __iter__(self):
+        for images, targets in self.loader:
+            images = images.to(self.device, non_blocking=True)
+            yield F.interpolate(images, size=(self.size, self.size), mode="bilinear", align_corners=False), targets
 
 
 def _train_tf(size: int):
@@ -153,22 +198,23 @@ def imagenet_bundle(root: str | Path, input_size: int = 224, test_samples: int |
 
     def train_loader(batch_size=64):
         return DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                          num_workers=num_workers, drop_last=True)
+                          drop_last=True, **loader_kwargs(num_workers))
 
     def test_loader(batch_size=64):
-        return DataLoader(Subset(val_set, stride_idx), batch_size=batch_size, num_workers=num_workers)
+        return DataLoader(Subset(val_set, stride_idx), batch_size=batch_size, **loader_kwargs(num_workers))
 
     def calibration_loader(n=512, batch_size=32, seed=0):
         g = torch.Generator().manual_seed(seed)
         idx = torch.randperm(len(calib_set), generator=g)[:n].tolist()
-        return DataLoader(Subset(calib_set, idx), batch_size=batch_size, shuffle=False)
+        return DataLoader(Subset(calib_set, idx), batch_size=batch_size, shuffle=False,
+                          **loader_kwargs(num_workers))
 
     return DataBundle("imagenet", (1, 3, input_size, input_size), IMAGENET_CLASSES, list(train_set.classes),
                       train_loader, test_loader, calibration_loader)
 
 
 def cifar10_upscaled_bundle(root=None, input_size: int = 224, test_samples: int | None = None,
-                            num_workers: int = 2) -> DataBundle:
+                            num_workers: int | None = None) -> DataBundle:
     """CIFAR-10 resized to `input_size` with ImageNet normalisation.
 
     For ImageNet-pretrained models (`--arch tv:...`) that need a 224x224 input but
@@ -185,25 +231,29 @@ def cifar10_upscaled_bundle(root=None, input_size: int = 224, test_samples: int 
 
     base = str(resolve_root(root))
     norm = [transforms.ToTensor(), transforms.Normalize(IMAGENET_MEAN, IMAGENET_STD)]
-    train_tf = transforms.Compose([transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(),
-                                   transforms.Resize(input_size), *norm])
-    eval_tf = transforms.Compose([transforms.Resize(input_size), *norm])
+    # Datasets stay at 32x32; UpscaledLoader does the resize per batch (see its docstring).
+    train_tf = transforms.Compose([transforms.RandomCrop(32, padding=4), transforms.RandomHorizontalFlip(), *norm])
+    eval_tf = transforms.Compose(norm)
     train_set = CIFAR10(base, train=True, download=True, transform=train_tf)
     calib_set = CIFAR10(base, train=True, download=True, transform=eval_tf)
     test_set = CIFAR10(base, train=False, download=True, transform=eval_tf)
     test_idx = _strided(len(test_set), DEFAULT_TEST_SAMPLES if test_samples is None else test_samples)
 
     def train_loader(batch_size=64):
-        return DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                          num_workers=num_workers, drop_last=True)
+        loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
+                            drop_last=True, **loader_kwargs(num_workers))
+        return UpscaledLoader(loader, input_size, device=training_device())
 
     def test_loader(batch_size=64):
-        return DataLoader(Subset(test_set, test_idx), batch_size=batch_size, num_workers=num_workers)
+        loader = DataLoader(Subset(test_set, test_idx), batch_size=batch_size, **loader_kwargs(num_workers))
+        return UpscaledLoader(loader, input_size)
 
     def calibration_loader(n=512, batch_size=32, seed=0):
         g = torch.Generator().manual_seed(seed)
         idx = torch.randperm(len(calib_set), generator=g)[:n].tolist()
-        return DataLoader(Subset(calib_set, idx), batch_size=batch_size, shuffle=False)
+        loader = DataLoader(Subset(calib_set, idx), batch_size=batch_size, shuffle=False,
+                            **loader_kwargs(num_workers))
+        return UpscaledLoader(loader, input_size)
 
     return DataBundle("cifar10-upscaled", (1, 3, input_size, input_size), 10, list(train_set.classes),
                       train_loader, test_loader, calibration_loader)

@@ -309,6 +309,18 @@ def _pruned_architecture(
     return tuple(sorted((name, after) for name, (_, after) in pruner.stats().channels.items()))
 
 
+def _analyze_on_device(model, loader):
+    """Sensitivity analysis on the GPU when there is one (it is one forward pass
+    over the calibration batches per layer), then the model goes back to CPU, where
+    every pipeline stage expects to copy it from."""
+    from .core.host import compute_device
+
+    try:
+        return analyze(model, loader, batches=4, device=compute_device())
+    finally:
+        model.cpu()
+
+
 def compress(
     model: nn.Module,
     calibration_loader,
@@ -332,6 +344,8 @@ def compress(
     confirm_margin: float = 0.1,
     verbose: bool = True,
     select_loader=None,
+    accum_steps: int = 1,
+    amp: bool = True,
 ) -> SearchResult:
     """Find the least compression that meets `budget`. Escalates only as needed.
 
@@ -412,6 +426,8 @@ def compress(
             runs=200 if full else search_runs,
             warmup=50 if full else 20,
             accuracy_limit=None if full else search_accuracy_limit,
+            amp=amp,
+            accum_steps=accum_steps,
         )
 
     def run(pipe: Pipeline) -> PipelineResult:
@@ -467,7 +483,7 @@ def compress(
     #      kept selectively, at the cost of a full export and benchmark.
     if accuracy_only and keep_float > 0 and attempt.result.quantization.precision == "int8":
         log("\n[1.2] sensitivity analysis")
-        report = analyze(model, calibration_loader, batches=4)
+        report = _analyze_on_device(model, calibration_loader)
         log("    " + "\n    ".join(report.summary(top=5).splitlines()))
         kept = report.most_sensitive(keep_float)
         log(f"\n[1.3] mixed precision — keeping {kept} in float32")
@@ -510,7 +526,7 @@ def compress(
     #    not from a uniform ratio applied blindly across depths.
     if report is None:
         log("\n[2] sensitivity analysis")
-        report = analyze(model, calibration_loader, batches=4)
+        report = _analyze_on_device(model, calibration_loader)
         log("    " + "\n    ".join(report.summary(top=5).splitlines()))
 
     best_pruned: Attempt | None = None

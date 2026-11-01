@@ -226,6 +226,12 @@ def training_device() -> str:
     return "cpu"
 
 
+def compute_device() -> str:
+    """Device for every non-deployment tensor job (BN re-estimation, in-loop
+    accuracy, sensitivity, fine-tuning): cuda, then mps, then cpu."""
+    return training_device()
+
+
 @lru_cache(maxsize=1)
 def probe() -> HostContext:
     """Detect the host once per process; the answer cannot change under us."""

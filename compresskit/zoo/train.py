@@ -18,6 +18,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+from ..core.amp import Scaler, autocast, prepare_batch, prepare_model
 from ..core.benchmark import accuracy_torch
 from ..core.host import training_device
 from ..distillation import cosine_lr
@@ -33,8 +34,12 @@ class TrainConfig:
     label_smoothing: float = 0.0
     grad_clip: float = 0.0
     device: str | None = None
+    amp: bool = True          # fp16 autocast on CUDA, no-op elsewhere
+    accum_steps: int = 1      # micro-batches per optimizer step
 
     def __post_init__(self):
+        if self.accum_steps < 1:
+            raise ValueError("accum_steps must be >= 1")
         if self.device is None:
             self.device = training_device()
         self.warmup_epochs = min(self.warmup_epochs, max(self.epochs - 1, 0))
@@ -50,7 +55,7 @@ def train(
     """Train `model` from its current weights. Returns it on CPU in eval mode."""
     config = config or TrainConfig()
     device = config.device
-    model.to(device).train()
+    prepare_model(model, device).train()
 
     optimizer = torch.optim.SGD(
         model.parameters(),
@@ -60,11 +65,16 @@ def train(
         nesterov=True,
     )
 
+    scaler = Scaler(device, config.amp)
+    accum = config.accum_steps
     batches = len(loader)
     for epoch in range(config.epochs):
         started = time.perf_counter()
         model.train()
-        running_loss = correct = seen = 0
+        # On-device accumulators, read once per epoch (a per-batch .item() is a GPU sync).
+        running_loss = torch.zeros((), device=device)
+        correct = torch.zeros((), device=device)
+        seen = 0
 
         for index, (images, targets) in enumerate(loader):
             for group in optimizer.param_groups:
@@ -72,19 +82,26 @@ def train(
                     config.lr, epoch + index / max(batches, 1), config.epochs, config.warmup_epochs
                 )
 
-            images, targets = images.to(device), targets.to(device)
-            logits = model(images)
+            images, targets = prepare_batch(images, device), targets.to(device, non_blocking=True)
+            with autocast(device, config.amp):
+                logits = model(images)
+            logits = logits.float()
             loss = F.cross_entropy(logits, targets, label_smoothing=config.label_smoothing)
 
-            optimizer.zero_grad(set_to_none=True)
-            loss.backward()
-            if config.grad_clip:
-                nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
-            optimizer.step()
+            if index % accum == 0:
+                optimizer.zero_grad(set_to_none=True)
+            scaler.backward(loss / accum)
+            if (index + 1) % accum == 0 or index + 1 == batches:
+                if config.grad_clip:
+                    scaler.unscale_(optimizer)
+                    nn.utils.clip_grad_norm_(model.parameters(), config.grad_clip)
+                scaler.step(optimizer)
 
-            running_loss += loss.item() * targets.size(0)
-            correct += int((logits.argmax(1) == targets).sum())
+            running_loss += loss.detach() * targets.size(0)
+            correct += (logits.argmax(1) == targets).sum()
             seen += targets.size(0)
+
+        running_loss, correct = float(running_loss), float(correct)
 
         stats = {
             "epoch": epoch,

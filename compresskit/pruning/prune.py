@@ -55,6 +55,10 @@ CRITERIA = {
 }
 
 
+# Images per backward chunk for the Taylor criterion on a GPU.
+TAYLOR_CHUNK = 8
+
+
 @dataclass
 class PruneConfig:
     """`global_pruning=True` is not protected by the per-layer SIMD-alignment
@@ -412,18 +416,32 @@ class StructuredPruner:
         importance-scoring a network that no longer exists.
         """
         self.model.zero_grad(set_to_none=True)
-        for index, batch in enumerate(self.loader):
-            if index >= self.batches:
-                break
-            if not (isinstance(batch, (list, tuple)) and len(batch) >= 2):
-                raise ValueError(
-                    f"criterion='taylor' needs (images, labels) batches for a real "
-                    f"cross-entropy loss; got {type(batch).__name__} instead — a loader "
-                    f"yielding bare images (as sensitivity.analyze tolerates) isn't enough"
-                )
-            images, labels = batch[0], batch[1]
-            loss = F.cross_entropy(self.model(images), labels)
-            loss.backward()
+        # The model lives on CPU between steps (Torch-Pruning edits it there), but a
+        # fwd+bwd over real batches at 224x224 is what a GPU is for. Micro-chunks keep
+        # a deep net's fp32 activations inside GPU memory; the loss is the mean over
+        # chunks, so the accumulated gradient equals the full-batch one.
+        device = "cuda" if torch.cuda.is_available() else "cpu"
+        chunk_size = TAYLOR_CHUNK if device == "cuda" else None
+        self.model.to(device)
+        try:
+            for index, batch in enumerate(self.loader):
+                if index >= self.batches:
+                    break
+                if not (isinstance(batch, (list, tuple)) and len(batch) >= 2):
+                    raise ValueError(
+                        f"criterion='taylor' needs (images, labels) batches for a real "
+                        f"cross-entropy loss; got {type(batch).__name__} instead — a loader "
+                        f"yielding bare images (as sensitivity.analyze tolerates) isn't enough"
+                    )
+                images, labels = batch[0].to(device), batch[1].to(device)
+                chunks = max(1, -(-len(images) // chunk_size)) if chunk_size else 1
+                for chunk_images, chunk_labels in zip(images.chunk(chunks), labels.chunk(chunks)):
+                    loss = F.cross_entropy(self.model(chunk_images), chunk_labels) / chunks
+                    loss.backward()
+        finally:
+            self.model.cpu()  # moves the accumulated .grad along with the weights
+            if device == "cuda":
+                torch.cuda.empty_cache()
 
     def step(self) -> nn.Module:
         """Remove one increment of channels. Fine-tune after this, then repeat."""

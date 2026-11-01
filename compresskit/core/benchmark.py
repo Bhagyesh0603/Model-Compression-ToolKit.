@@ -26,6 +26,12 @@ from .export import size_mb
 WARMUP_RUNS = 50
 TIMED_RUNS = 200
 BENCH_THREADS = 1
+# Wall-clock ceiling per artifact. Small models finish their full warmup+runs far
+# below this, so their numbers are unchanged; a 15 GFLOP model at one thread would
+# otherwise spend minutes per stage on timing alone.
+BENCH_BUDGET_S = 20.0
+MIN_TIMED_RUNS = 20
+MIN_WARMUP_RUNS = 3
 
 
 def make_session(path: str | Path, threads: int = BENCH_THREADS) -> ort.InferenceSession:
@@ -59,11 +65,24 @@ def benchmark(
     warmup: int = WARMUP_RUNS,
     runs: int = TIMED_RUNS,
     threads: int = BENCH_THREADS,
+    budget_s: float | None = BENCH_BUDGET_S,
 ) -> Latency:
-    """Time a single forward pass. Median is the headline; p95 shows the tail."""
+    """Time a single forward pass. Median is the headline; p95 shows the tail.
+
+    `budget_s` caps total wall time: if the requested warmup+runs would exceed it,
+    warmup and runs shrink (never below MIN_WARMUP_RUNS / MIN_TIMED_RUNS) and
+    `Latency.runs` / `.warmup` record what was actually done.
+    """
     session = make_session(path, threads=threads)
     name = session.get_inputs()[0].name
     batch = np.random.randn(*input_shape).astype(np.float32)
+
+    first = time.perf_counter()
+    session.run(None, {name: batch})
+    once = max(time.perf_counter() - first, 1e-6)
+    if budget_s is not None and once * (warmup + runs) > budget_s:
+        warmup = min(warmup, MIN_WARMUP_RUNS)
+        runs = min(runs, max(MIN_TIMED_RUNS, int(budget_s / once) - warmup))
 
     for _ in range(warmup):
         session.run(None, {name: batch})

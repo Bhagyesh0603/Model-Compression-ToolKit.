@@ -48,12 +48,44 @@ def _bundle(args, meta=None):
                       getattr(args, "holdout_val", 0))
 
 
-def _loaders(args, bundle):
-    batch = args.batch_size or (128 if bundle.name == "cifar10" else 64)
+def _batch_arg(value: str):
+    """`--batch-size` accepts a number or "auto"."""
+    return "auto" if value == "auto" else int(value)
+
+
+def _plan_batch(args, bundle, model=None) -> tuple[int, int]:
+    """(micro_batch, accum_steps) for training.
+
+    The requested batch is `--batch-size`, else 128 for CIFAR-10 and 64 otherwise.
+    On a CUDA GPU a real forward+backward probes what fits (halving on OOM) unless a
+    number was given explicitly; gradient accumulation then restores the requested
+    effective batch. Off-CUDA the request is used as is.
+    """
+    from .core.host import compute_device
+    from .core.memory import fit_batch_size, split_batch
+
+    explicit = args.batch_size not in (None, "auto")
+    requested = args.batch_size if explicit else (128 if bundle.name == "cifar10" else 64)
+    if explicit or model is None or not compute_device().startswith("cuda"):
+        return requested, 1
+
+    fitted = fit_batch_size(model, bundle.input_shape, requested, compute_device(),
+                            teacher=model, amp=not getattr(args, "no_amp", False))
+    model.cpu()
+    micro, accum = split_batch(requested, fitted)
+    if micro != requested:
+        print(f"batch size: {requested} does not fit this GPU at {tuple(bundle.input_shape[1:])}; "
+              f"using {micro} x {accum} accumulation steps (same effective batch)")
+    return micro, accum
+
+
+def _loaders(args, bundle, model=None):
+    batch, accum = _plan_batch(args, bundle, model)
     return (
-        bundle.calibration_loader(n=args.calib, batch_size=32 if bundle.name != "cifar10" else 64),
+        bundle.calibration_loader(n=args.calib, batch_size=min(batch, 32) if bundle.name != "cifar10" else 64),
         bundle.test_loader(batch_size=batch),
         bundle.train_loader(batch_size=batch),
+        accum,
     )
 
 
@@ -94,8 +126,11 @@ def _report_extras(result, bundle, meta, test) -> dict:
 
     extras = {"training_history": meta.get("history"), "class_names": bundle.class_names}
     try:
-        extras["per_class"] = (evaluate_onnx(result.baseline.artifact, test),
-                               evaluate_onnx(result.final.artifact, test))
+        # `measure()` already scored both artifacts on this test loader and kept the
+        # confusion matrices; re-running ONNX inference over them again is wasted CPU.
+        baseline, final = result.baseline.class_metrics, result.final.class_metrics
+        extras["per_class"] = (baseline or evaluate_onnx(result.baseline.artifact, test),
+                               final or evaluate_onnx(result.final.artifact, test))
     except Exception as error:  # a report section must never sink a finished run
         print(f"  (per-class accuracy skipped: {error})")
     return extras
@@ -122,6 +157,7 @@ def cmd_bench(args) -> int:
 
 
 def cmd_train(args) -> int:
+    from .core.host import compute_device
     from .core.benchmark import accuracy_torch
     from .zoo.train import TrainConfig, save_model, train
 
@@ -140,12 +176,12 @@ def cmd_train(args) -> int:
     pretrained = _is_pretrained(args.arch)
     epochs = args.epochs or (10 if pretrained else 60)
     lr = args.lr or (0.01 if pretrained else 0.1)
-    batch = args.batch_size or (128 if bundle.name == "cifar10" else 64)
+    model = _build_arch(args.arch, bundle.num_classes)
+    batch, accum = _plan_batch(args, bundle, model)
     tl, test = bundle.train_loader(batch_size=batch), bundle.test_loader(batch_size=batch)
     # With a held-out split, the per-epoch curve is read on it, so the test set is
     # only looked at once, at the end.
     vl = bundle.val_loader(batch_size=batch) if bundle.val_loader else test
-    model = _build_arch(args.arch, bundle.num_classes)
 
     if pretrained and not is_torchvision_arch(args.arch):
         # Same recipe as the original notebook: keep the ImageNet backbone
@@ -161,8 +197,9 @@ def cmd_train(args) -> int:
               f"train {stats['train_acc'] * 100:5.2f}%  val {stats.get('val_acc', 0) * 100:5.2f}%  "
               f"{stats['seconds']:.1f}s", flush=True)
 
-    train(model, tl, TrainConfig(epochs=epochs, lr=lr), val_loader=vl, on_epoch=on_epoch)
-    accuracy = accuracy_torch(model, test)
+    train(model, tl, TrainConfig(epochs=epochs, lr=lr, amp=not args.no_amp, accum_steps=accum),
+          val_loader=vl, on_epoch=on_epoch)
+    accuracy = accuracy_torch(model, test, device=compute_device())
     path = save_model(model, out, {
         "arch": args.arch, "epochs": epochs, "accuracy": accuracy, "dataset": bundle.name,
         "input_shape": list(bundle.input_shape), "class_names": bundle.class_names, "history": history,
@@ -173,11 +210,13 @@ def cmd_train(args) -> int:
 
 
 def cmd_sensitivity(args) -> int:
+    from .core.host import compute_device
     from .sensitivity import analyze
 
     model, meta = _load_model(args)
     bundle = _bundle(args, meta)
-    report = analyze(model, bundle.calibration_loader(n=args.calib, batch_size=32), batches=args.batches)
+    report = analyze(model, bundle.calibration_loader(n=args.calib, batch_size=32), batches=args.batches,
+                     device=compute_device())
     print()
     print(report.summary(top=args.top))
     print()
@@ -192,17 +231,31 @@ def cmd_pipeline(args) -> int:
 
     model, meta = _load_model(args)
     bundle = _bundle(args, meta)
-    calib, test, train = _loaders(args, bundle)
+    calib, test, train, accum = _loaders(args, bundle, model)
 
     pipe = Pipeline(model, calib, test, train_loader=train, input_shape=bundle.input_shape,
-                    workdir=args.workdir)
+                    workdir=args.workdir, amp=not args.no_amp, accum_steps=accum)
     if args.prune:
+        prune_options = {}
+        if args.protect_sensitive:
+            # Prune the layers that quantization shows to be fragile less than the rest.
+            from .core.host import compute_device
+            from .sensitivity import analyze
+
+            try:
+                ranking = analyze(model, calib, batches=2, device=compute_device())
+            finally:
+                model.cpu()
+            prune_options["ratio_overrides"] = ranking.prune_ratios(args.prune, protect=args.protect_sensitive)
+            print(f"protecting {sorted(prune_options['ratio_overrides'])} at half the pruning ratio")
         pipe.prune(
             ratio=args.prune,
             align=args.align,
             steps=args.steps,
+            criterion=args.criterion,
             fine_tune_epochs=args.fine_tune_epochs,
             loss=args.loss,
+            **prune_options,
         )
         pipe.recover()
     if args.distill:
@@ -217,9 +270,13 @@ def cmd_pipeline(args) -> int:
     print(result.summary())
 
     if args.report:
+        from .core.host import compute_device
         from .sensitivity import analyze
 
-        sensitivity = analyze(model, calib, batches=4)
+        try:
+            sensitivity = analyze(model, calib, batches=4, device=compute_device())
+        finally:
+            model.cpu()
         written = render(result, args.report, sensitivity=sensitivity,
                          **_report_extras(result, bundle, meta, test))
         print(f"\nreport -> {written}")
@@ -234,7 +291,7 @@ def cmd_compress(args) -> int:
 
     model, meta = _load_model(args)
     bundle = _bundle(args, meta)
-    calib, test, train = _loaders(args, bundle)
+    calib, test, train, accum = _loaders(args, bundle, model)
     select = bundle.val_loader(batch_size=256) if bundle.val_loader else None
     if select is not None:
         print("selection on the held-out validation split; the test set is only used to report the winner")
@@ -254,6 +311,8 @@ def cmd_compress(args) -> int:
         prune_fine_tune_epochs=args.fine_tune_epochs,
         precision=args.precision,
         allow_slow_int8=args.allow_slow_int8,
+        amp=not args.no_amp,
+        accum_steps=accum,
     )
     print()
     print("=" * 78)
@@ -319,7 +378,8 @@ def build_parser() -> argparse.ArgumentParser:
                        help="resnet20/56/18, vgg16_bn, or har_resnet18 (ImageNet-pretrained)")
     train.add_argument("--epochs", type=int, help="default 60 (10 for pretrained archs)")
     train.add_argument("--lr", type=float, help="default 0.1 (0.01 for pretrained archs)")
-    train.add_argument("--batch-size", type=int, help="default 128 for CIFAR-10, else 64")
+    train.add_argument("--batch-size", type=_batch_arg, help="number or \"auto\"; default 128 for CIFAR-10, else auto-fit (64)")
+    train.add_argument("--no-amp", action="store_true", help="disable fp16 mixed precision on CUDA")
     train.add_argument("--out")
     train.add_argument("--skip-if-exists", action="store_true", help="do nothing if --out already exists")
     add_data_args(train)
@@ -341,8 +401,13 @@ def build_parser() -> argparse.ArgumentParser:
     pipe.add_argument("--loss", default="dkd", choices=["kd", "dkd"])
     pipe.add_argument("--precision", default="auto", choices=["auto", "int8", "fp16", "fp32"])
     pipe.add_argument("--allow-slow-int8", action="store_true")
+    pipe.add_argument("--no-amp", action="store_true", help="disable fp16 mixed precision on CUDA")
+    pipe.add_argument("--criterion", default="magnitude", choices=["magnitude", "magnitude_l2", "taylor", "random"],
+                      help="channel importance; taylor ranks by loss impact (GPU, slower, often better recovery)")
+    pipe.add_argument("--protect-sensitive", type=int, default=0, metavar="K",
+                      help="prune the K quantization-fragile layers at half the ratio")
     pipe.add_argument("--no-quantize", action="store_true")
-    pipe.add_argument("--batch-size", type=int)
+    pipe.add_argument("--batch-size", type=_batch_arg, help="number or \"auto\" (default: auto-fit to the GPU)")
     pipe.add_argument("--workdir", default="artifacts/pipeline")
     pipe.add_argument("--report", help="write an HTML report here")
     pipe.add_argument("--json", help="write raw measurements here")
@@ -355,11 +420,12 @@ def build_parser() -> argparse.ArgumentParser:
     auto.add_argument("--distill", type=int, default=10, help="distillation epochs if needed")
     auto.add_argument("--loss", default="dkd", choices=["kd", "dkd"])
     auto.add_argument("--qat-epochs", type=int, default=3, help="QAT epochs if quantize-only misses accuracy")
-    auto.add_argument("--batch-size", type=int)
+    auto.add_argument("--batch-size", type=_batch_arg, help="number or \"auto\" (default: auto-fit to the GPU)")
     auto.add_argument("--steps", type=int, default=1, help="gradual pruning steps in the recovery stage")
     auto.add_argument("--fine-tune-epochs", type=int, default=0, help="fine-tune epochs after each pruning step")
     auto.add_argument("--precision", default="auto", choices=["auto", "int8", "fp16", "fp32"])
     auto.add_argument("--allow-slow-int8", action="store_true")
+    auto.add_argument("--no-amp", action="store_true", help="disable fp16 mixed precision on CUDA")
     auto.add_argument("--json", help="write raw measurements here")
     auto.add_argument("--workdir", default="artifacts/search")
     auto.add_argument("--report", help="write an HTML report here")
@@ -375,6 +441,16 @@ def main(argv=None) -> int:
     except KeyboardInterrupt:
         print("\ninterrupted", file=sys.stderr)
         return 130
+    except Exception as error:
+        import torch
+
+        if not (isinstance(error, torch.cuda.OutOfMemoryError) or "out of memory" in str(error).lower()):
+            raise
+        print(f"\nout of GPU memory: {error}\n"
+              "  -> use a smaller --batch-size (or leave it unset for auto-fit), keep AMP on (omit --no-amp),\n"
+              "     or pick a smaller model. Pruning checkpoints already written under --workdir are usable.",
+              file=sys.stderr)
+        return 3
 
 
 if __name__ == "__main__":
