@@ -29,12 +29,14 @@ IMAGENET_MEAN = (0.485, 0.456, 0.406)
 IMAGENET_STD = (0.229, 0.224, 0.225)
 
 
-def loader_kwargs(num_workers: int | None = None) -> dict:
-    """DataLoader settings that keep a GPU fed: several persistent workers and
-    pinned host memory. `None` picks min(4, cpu_count); 0 disables workers."""
+def loader_kwargs(num_workers: int | None = None, persistent: bool = False) -> dict:
+    """DataLoader settings that keep a GPU fed: several workers and pinned host
+    memory. `None` picks min(4, cpu_count); 0 disables workers. Only the training
+    loader should be `persistent` (it is iterated every epoch); persistent workers
+    on the test/calibration loaders would just keep idle processes alive."""
     workers = min(4, os.cpu_count() or 1) if num_workers is None else num_workers
     kwargs = {"num_workers": workers, "pin_memory": torch.cuda.is_available()}
-    if workers > 0:
+    if workers > 0 and persistent:
         kwargs["persistent_workers"] = True
     return kwargs
 
@@ -198,7 +200,7 @@ def imagenet_bundle(root: str | Path, input_size: int = 224, test_samples: int |
 
     def train_loader(batch_size=64):
         return DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                          drop_last=True, **loader_kwargs(num_workers))
+                          drop_last=True, **loader_kwargs(num_workers, persistent=True))
 
     def test_loader(batch_size=64):
         return DataLoader(Subset(val_set, stride_idx), batch_size=batch_size, **loader_kwargs(num_workers))
@@ -241,7 +243,7 @@ def cifar10_upscaled_bundle(root=None, input_size: int = 224, test_samples: int 
 
     def train_loader(batch_size=64):
         loader = DataLoader(train_set, batch_size=batch_size, shuffle=True,
-                            drop_last=True, **loader_kwargs(num_workers))
+                            drop_last=True, **loader_kwargs(num_workers, persistent=True))
         return UpscaledLoader(loader, input_size, device=training_device())
 
     def test_loader(batch_size=64):

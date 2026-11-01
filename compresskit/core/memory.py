@@ -20,6 +20,18 @@ def _is_oom(error: BaseException) -> bool:
     return isinstance(error, torch.cuda.OutOfMemoryError) or "out of memory" in str(error).lower()
 
 
+def _bn_buffers(*models: nn.Module | None) -> list[tuple[torch.Tensor, torch.Tensor]]:
+    """(buffer, clone) for every BatchNorm statistic in `models`, to put back after a probe."""
+    saved = []
+    for model in models:
+        for module in (model.modules() if model is not None else ()):
+            if isinstance(module, nn.modules.batchnorm._BatchNorm):
+                for buf in (module.running_mean, module.running_var, module.num_batches_tracked):
+                    if buf is not None:
+                        saved.append((buf, buf.detach().clone()))
+    return saved
+
+
 def fit_batch_size(
     model: nn.Module,
     input_shape: tuple[int, ...],
@@ -39,9 +51,15 @@ def fit_batch_size(
         return start
 
     was_training = model.training
-    prepare_model(model, device).train()
+    # Teacher first: callers may pass the model itself as its own teacher (it is both
+    # during distillation), and the student pass must be the one left in train mode so
+    # the probe sees train-mode memory (BN batch statistics, saved activations).
     if teacher is not None:
         prepare_model(teacher, device).eval()
+    prepare_model(model, device).train()
+    # The probe feeds random noise through train-mode BatchNorm, which would overwrite
+    # the model's running statistics; snapshot them and put them back.
+    saved = _bn_buffers(model, teacher)
 
     batch = max(start, minimum)
     try:
@@ -65,6 +83,9 @@ def fit_batch_size(
                 gc.collect()
                 torch.cuda.empty_cache()
     finally:
+        with torch.no_grad():
+            for buf, original in saved:
+                buf.copy_(original)
         model.train(was_training)
     return batch
 

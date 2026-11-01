@@ -176,7 +176,7 @@ def test_upscaled_loader_exposes_what_pipeline_reads():
 def test_loader_kwargs_workers():
     assert "persistent_workers" not in loader_kwargs(0)
     assert loader_kwargs(0)["num_workers"] == 0
-    assert loader_kwargs(3)["persistent_workers"] is True
+    assert loader_kwargs(3)["num_workers"] == 3
     assert 1 <= loader_kwargs(None)["num_workers"] <= 4
 
 
@@ -243,3 +243,43 @@ def test_recover_notes_when_a_model_has_no_batchnorm(tmp_path):
     data = DataLoader(TensorDataset(torch.randn(8, 3, 32, 32), torch.randint(0, 10, (8,))), batch_size=4)
     result = Pipeline(net, data, data, workdir=tmp_path, warmup=1, runs=3, device="cpu").recover().run(verbose=False)
     assert "no BatchNorm" in result.stages[0].notes
+
+
+def test_fit_batch_size_leaves_batchnorm_statistics_alone(fake_cuda):
+    # The CLI probes with the real model standing in as its own teacher; forward passes
+    # on random noise in train mode would otherwise overwrite the BN running stats and
+    # corrupt the baseline that gets measured afterwards.
+    net = nn.Sequential(nn.Flatten(), nn.Linear(12, 8), nn.BatchNorm1d(8), nn.Linear(8, 3))
+    net.eval()
+    net[2].running_mean.fill_(0.7)
+    net[2].running_var.fill_(2.5)
+    before = {k: v.clone() for k, v in net.state_dict().items()}
+
+    memory.fit_batch_size(net, (1, 3, 2, 2), start=16, device="cuda", teacher=net)
+
+    for key, value in net.state_dict().items():
+        assert torch.equal(value, before[key]), key
+    assert not net.training                         # mode restored too
+
+
+def test_fit_batch_size_probes_the_student_in_train_mode(fake_cuda):
+    modes = []
+
+    class Spy(nn.Module):
+        def __init__(self):
+            super().__init__()
+            self.fc = nn.Linear(4, 3)
+
+        def forward(self, x):
+            modes.append(self.training)
+            return self.fc(x.flatten(1))
+
+    net = Spy()
+    memory.fit_batch_size(net, (1, 4), start=4, device="cuda", teacher=net)
+    assert modes[-1] is True                        # the grad-carrying pass is a training pass
+
+
+def test_only_the_train_loader_gets_persistent_workers():
+    assert "persistent_workers" not in loader_kwargs(3)
+    assert loader_kwargs(3, persistent=True)["persistent_workers"] is True
+    assert "persistent_workers" not in loader_kwargs(0, persistent=True)
